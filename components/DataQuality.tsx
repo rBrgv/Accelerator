@@ -12,15 +12,15 @@ export default function DataQuality({ scanData }: DataQualityProps) {
   
   // Calculate data quality metrics
   const requiredFieldsNoDefault = objects.reduce((sum: number, obj) => 
-    sum + obj.fields.filter(f => f.required && !f.nillable).length, 0
+    sum + obj.fields.filter(f => f.required && !f.nillable).length
   , 0);
   
   const longTextFields = objects.reduce((sum: number, obj) => 
-    sum + obj.fields.filter(f => (f.type === "textarea" || f.type === "richtextarea") && f.length && f.length > 255).length, 0
+    sum + obj.fields.filter(f => (f.type === "textarea" || f.type === "richtextarea") && f.length && f.length > 255).length
   , 0);
   
   const richTextFields = objects.reduce((sum: number, obj) => 
-    sum + obj.fields.filter(f => f.type === "richtextarea").length, 0
+    sum + obj.fields.filter(f => f.type === "richtextarea").length
   , 0);
   
   const objectsWithRequiredFields = objects.filter(obj => 
