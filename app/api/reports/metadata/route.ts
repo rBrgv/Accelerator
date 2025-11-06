@@ -97,7 +97,7 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
   await browser.close();
 
   const filename = `metadata-insights-${new Date().toISOString().split('T')[0]}.pdf`;
-  return new NextResponse(pdfBuffer, {
+  return new NextResponse(pdfBuffer as any, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
