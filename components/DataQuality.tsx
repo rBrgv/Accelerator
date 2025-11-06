@@ -11,15 +11,15 @@ export default function DataQuality({ scanData }: DataQualityProps) {
   const objects = scanData.inventory.sourceObjects;
   
   // Calculate data quality metrics
-  const requiredFieldsNoDefault = objects.reduce((sum, obj) => 
+  const requiredFieldsNoDefault = objects.reduce((sum: number, obj) => 
     sum + obj.fields.filter(f => f.required && !f.nillable).length, 0
   , 0);
   
-  const longTextFields = objects.reduce((sum, obj) => 
+  const longTextFields = objects.reduce((sum: number, obj) => 
     sum + obj.fields.filter(f => (f.type === "textarea" || f.type === "richtextarea") && f.length && f.length > 255).length, 0
   , 0);
   
-  const richTextFields = objects.reduce((sum, obj) => 
+  const richTextFields = objects.reduce((sum: number, obj) => 
     sum + obj.fields.filter(f => f.type === "richtextarea").length, 0
   , 0);
   
@@ -60,7 +60,7 @@ export default function DataQuality({ scanData }: DataQualityProps) {
           <div className="p-4 bg-green-50 rounded-lg">
             <div className="text-sm text-gray-600">External IDs</div>
             <div className="text-2xl font-bold text-green-900">
-              {objects.reduce((sum, obj) => sum + obj.fields.filter(f => f.externalId === true).length, 0)}
+              {objects.reduce((sum: number, obj) => sum + obj.fields.filter(f => f.externalId === true).length, 0)}
             </div>
             <div className="text-xs text-gray-500 mt-1">For record matching</div>
           </div>
