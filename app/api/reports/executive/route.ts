@@ -55,8 +55,12 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
       // On Vercel, use @sparticuz/chromium
       if (isVercel) {
         const chromium = require("@sparticuz/chromium");
-        chromium.setGraphicsMode(false); // Disable graphics for serverless
+        // Get the executable path for Chromium
         launchOptions.executablePath = await chromium.executablePath();
+        // Set font configuration for serverless (if available)
+        if (chromium.font) {
+          launchOptions.font = chromium.font;
+        }
       }
 
       browser = await puppeteer.launch(launchOptions);
