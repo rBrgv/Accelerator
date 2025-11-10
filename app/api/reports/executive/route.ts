@@ -37,30 +37,33 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
       // Get the right Puppeteer instance
       const puppeteer = await getPuppeteer();
       
-      // Vercel-specific Puppeteer configuration
-      const launchOptions: any = {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process', // Required for Vercel serverless
-          '--disable-gpu',
-        ],
-      };
-
-      // On Vercel, use @sparticuz/chromium
+      // Configure launch options based on environment
+      let launchOptions: any;
+      
       if (isVercel) {
+        // On Vercel, use @sparticuz/chromium with its recommended configuration
         const chromium = require("@sparticuz/chromium");
-        // Get the executable path for Chromium
-        launchOptions.executablePath = await chromium.executablePath();
-        // Set font configuration for serverless (if available)
-        if (chromium.font) {
-          launchOptions.font = chromium.font;
-        }
+        launchOptions = {
+          args: chromium.args,
+          defaultViewport: chromium.defaultViewport,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+        };
+      } else {
+        // Local development - use standard Puppeteer configuration
+        launchOptions = {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+          ],
+        };
       }
 
       browser = await puppeteer.launch(launchOptions);
