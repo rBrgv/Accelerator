@@ -19,60 +19,11 @@ async function getPuppeteer() {
 async function generateReport(scanOutput: ScanOutput, requestId: string) {
   const logger = createLogger(requestId);
   
-  let browser: any = null;
-  
-  try {
-    // Generate markdown
-    const markdown = generateExecutiveReportMarkdown(scanOutput);
+  // Generate markdown
+  const markdown = generateExecutiveReportMarkdown(scanOutput);
 
-    // Convert to HTML
-    const html = await marked(markdown, { breaks: true, gfm: true });
-
-    // Generate PDF with timeout protection
-    // Vercel has function timeout limits: 10s (Hobby) or 60s (Pro/Enterprise)
-    const isVercel = !!process.env.VERCEL;
-    const pdfTimeout = isVercel ? 25000 : 30000; // 25s on Vercel, 30s locally
-    
-    const pdfPromise = (async () => {
-      // Get the right Puppeteer instance
-      const puppeteer = await getPuppeteer();
-      
-      // Configure launch options based on environment
-      let launchOptions: any;
-      
-      if (isVercel) {
-        // On Vercel, use @sparticuz/chromium with its recommended configuration
-        const chromium = require("@sparticuz/chromium");
-        launchOptions = {
-          args: chromium.args,
-          defaultViewport: chromium.defaultViewport,
-          executablePath: await chromium.executablePath(),
-          headless: chromium.headless,
-        };
-      } else {
-        // Local development - use standard Puppeteer configuration
-        launchOptions = {
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu',
-          ],
-        };
-      }
-
-      browser = await puppeteer.launch(launchOptions);
-      const page = await browser.newPage();
-      
-      // Set a shorter timeout for page operations on Vercel
-      if (isVercel) {
-        page.setDefaultTimeout(20000); // 20 seconds
-      }
+  // Convert to HTML
+  const html = await marked(markdown, { breaks: true, gfm: true });
   
   const fullHtml = `
     <!DOCTYPE html>
@@ -157,6 +108,58 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
     </html>
   `;
 
+  // Try PDF generation, fallback to HTML if it fails
+  let browser: any = null;
+  
+  try {
+
+    // Generate PDF with timeout protection
+    // Vercel has function timeout limits: 10s (Hobby) or 60s (Pro/Enterprise)
+    const isVercel = !!process.env.VERCEL;
+    const pdfTimeout = isVercel ? 25000 : 30000; // 25s on Vercel, 30s locally
+    
+    const pdfPromise = (async () => {
+      // Get the right Puppeteer instance
+      const puppeteer = await getPuppeteer();
+      
+      // Configure launch options based on environment
+      let launchOptions: any;
+      
+      if (isVercel) {
+        // On Vercel, use @sparticuz/chromium with its recommended configuration
+        const chromium = require("@sparticuz/chromium");
+        launchOptions = {
+          args: chromium.args,
+          defaultViewport: chromium.defaultViewport,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+          ignoreHTTPSErrors: true,
+        };
+      } else {
+        // Local development - use standard Puppeteer configuration
+        launchOptions = {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+          ],
+        };
+      }
+
+      browser = await puppeteer.launch(launchOptions);
+      const page = await browser.newPage();
+      
+      // Set a shorter timeout for page operations on Vercel
+      if (isVercel) {
+        page.setDefaultTimeout(20000); // 20 seconds
+      }
+
       // Use a shorter wait on Vercel to avoid timeouts
       await page.setContent(fullHtml, { 
         waitUntil: isVercel ? 'domcontentloaded' : 'networkidle0',
@@ -200,6 +203,20 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
       }
     }
     logger.error({ error: error.message, stack: error.stack }, "Failed to generate PDF");
+    
+    // On Vercel, if PDF generation fails due to Chromium issues, return HTML as fallback
+    const isVercel = !!process.env.VERCEL;
+    if (isVercel && (error.message?.includes("libnss3.so") || error.message?.includes("shared libraries"))) {
+      logger.warn("PDF generation failed on Vercel due to Chromium dependencies. Returning HTML instead.");
+      const filename = `executive-readiness-summary-${new Date().toISOString().split('T')[0]}.html`;
+      return new NextResponse(fullHtml, {
+        headers: {
+          'Content-Type': 'text/html',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        },
+      });
+    }
+    
     throw error; // Re-throw to be handled by the route handler
   }
 }
