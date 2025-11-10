@@ -14,7 +14,9 @@ function calculateReadinessScore(scan: ScanOutput): number {
   score -= Math.min(scan.summary.findingsMedium * 0.5, 15);
   
   // Deduct points for low automation (no active flows) - minor impact
-  const activeFlows = scan.inventory.automation.flows.filter(f => f.status === "Active").length;
+  // Use flowSummary if available (more accurate), otherwise fallback to flows array
+  const activeFlows = scan.inventory.automation.flowSummary?.active ?? 
+    scan.inventory.automation.flows.filter(f => f.status === "Active").length;
   if (activeFlows === 0) score -= 8;
   
   // Deduct points for excessive Apex classes - minor impact
@@ -65,7 +67,10 @@ function getReadinessStatus(score: number): string {
 export function generateExecutiveReportMarkdown(scan: ScanOutput): string {
   const org = scan.source.organization || {};
   const readinessScore = calculateReadinessScore(scan);
-  const activeFlows = scan.inventory.automation.flows.filter(f => f.status === "Active").length;
+  // Use flowSummary if available (more accurate), otherwise fallback to flows array
+  const activeFlows = scan.inventory.automation.flowSummary?.active ?? 
+    scan.inventory.automation.flows.filter(f => f.status === "Active").length;
+  const totalFlows = scan.inventory.automation.flowSummary?.total ?? scan.inventory.automation.flows.length;
   const apexCount = scan.inventory.code?.apexClasses?.length || 0;
   const coverage = scan.inventory.code?.coverage?.orgWidePercent;
   const totalObjects = scan.summary.objects;
@@ -128,8 +133,12 @@ export function generateExecutiveReportMarkdown(scan: ScanOutput): string {
     summaryText.push("The audit indicates migration is possible but will require extensive remediation to address multiple technical and process gaps.");
   }
   
-  if (activeFlows === 0) {
+  // Only flag as issue if truly 0 active flows (not just some inactive versions)
+  if (activeFlows === 0 && totalFlows > 0) {
     summaryText.push("Core automation controls are inactive and should be reactivated to restore business process efficiency.");
+  } else if (activeFlows > 0 && totalFlows > activeFlows) {
+    // Some flows are inactive (different versions) - this is normal, not a concern
+    // Don't add any negative messaging about this
   }
   
   if (apexCount > 500) {
@@ -150,7 +159,8 @@ export function generateExecutiveReportMarkdown(scan: ScanOutput): string {
   md += `## Key Risks\n\n`;
   const risks: string[] = [];
   
-  if (activeFlows === 0) {
+  // Only flag as risk if truly 0 active flows (not just some inactive versions)
+  if (activeFlows === 0 && totalFlows > 0) {
     risks.push("Inactive automation layer (0 active flows) - business processes may be manual or dependent on triggers.");
   }
   
@@ -203,7 +213,8 @@ export function generateExecutiveReportMarkdown(scan: ScanOutput): string {
     actions.push("Approve remediation phase to address high-severity findings blocking migration.");
   }
   
-  if (activeFlows === 0) {
+  // Only flag as action if truly 0 active flows (not just some inactive versions)
+  if (activeFlows === 0 && totalFlows > 0) {
     actions.push("Sponsor automation reactivation initiative to restore business process automation.");
   }
   

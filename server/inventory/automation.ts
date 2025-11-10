@@ -1,7 +1,115 @@
-import { AutomationIndex, AutomationCount, Flow, Trigger, ValidationRule } from "@/lib/types";
+import { AutomationIndex, AutomationCount, Flow, Trigger, ValidationRule, FlowSummary } from "@/lib/types";
 import { soql, sfGet } from "../salesforce/rest";
 import { createLogger } from "../logger";
 import { listMetadata, listMetadataViaEntityDefinition } from "../salesforce/metadata";
+
+// Flow counting helpers - try FlowDefinitionView (best), then FlowDefinition, then Flow (last resort)
+async function countFlowsViaFDV(
+  instanceUrl: string,
+  accessToken: string,
+  apiVersion: string,
+  requestId?: string
+): Promise<FlowSummary> {
+  // Get total count
+  const totalQ = `SELECT COUNT() FROM FlowDefinitionView`;
+  const totalR = await soql(instanceUrl, accessToken, apiVersion, totalQ, requestId, { tooling: true });
+  const total = totalR.totalSize ?? 0;
+  
+  // Get active count using WHERE clause
+  let active = 0;
+  try {
+    const activeQ = `SELECT COUNT() FROM FlowDefinitionView WHERE ActiveVersion.Status = 'Active'`;
+    const activeR = await soql(instanceUrl, accessToken, apiVersion, activeQ, requestId, { tooling: true });
+    active = activeR.totalSize ?? 0;
+  } catch {
+    // Fallback: query all and count (may be paginated, so less accurate)
+    const allQ = `SELECT DeveloperName, ActiveVersionId, ActiveVersion.Status, LatestVersion.Status FROM FlowDefinitionView`;
+    const allR = await soql(instanceUrl, accessToken, apiVersion, allQ, requestId, { tooling: true });
+    const allRows = allR.records ?? [];
+    active = allRows.filter((x: any) => x.ActiveVersionId && x.ActiveVersion?.Status === "Active").length;
+  }
+  
+  return { total, active, available: true, method: "FlowDefinitionView" };
+}
+
+async function countFlowsViaFD(
+  instanceUrl: string,
+  accessToken: string,
+  apiVersion: string,
+  requestId?: string
+): Promise<FlowSummary> {
+  // Get total count
+  const totalQ = `SELECT COUNT() FROM FlowDefinition`;
+  const totalR = await soql(instanceUrl, accessToken, apiVersion, totalQ, requestId, { tooling: true });
+  const total = totalR.totalSize ?? 0;
+  
+  // Get active count (flows with ActiveVersionId)
+  let active = 0;
+  try {
+    const activeQ = `SELECT COUNT() FROM FlowDefinition WHERE ActiveVersionId != null`;
+    const activeR = await soql(instanceUrl, accessToken, apiVersion, activeQ, requestId, { tooling: true });
+    active = activeR.totalSize ?? 0;
+  } catch {
+    // Fallback: query all and count
+    const allQ = `SELECT DeveloperName, ActiveVersionId, LatestVersionId FROM FlowDefinition`;
+    const allR = await soql(instanceUrl, accessToken, apiVersion, allQ, requestId, { tooling: true });
+    const allRows = allR.records ?? [];
+    active = allRows.filter((x: any) => !!x.ActiveVersionId).length;
+  }
+  
+  return { total, active, available: true, method: "FlowDefinition" };
+}
+
+async function countFlowsViaFlow(
+  instanceUrl: string,
+  accessToken: string,
+  apiVersion: string,
+  requestId?: string
+): Promise<FlowSummary> {
+  const q = `
+    SELECT Id, Status, Definition.DeveloperName
+    FROM Flow
+  `;
+  const r = await soql(instanceUrl, accessToken, apiVersion, q, requestId, { tooling: true });
+  const rows = r.records ?? [];
+  const names = new Set<string>();
+  let active = 0;
+  for (const x of rows) {
+    if (x?.Definition?.DeveloperName) names.add(x.Definition.DeveloperName);
+    if (x?.Status === "Active" && x?.Definition?.DeveloperName) active++;
+  }
+  const total = names.size || rows.length;
+  return { total, active, available: true, method: "Flow" };
+}
+
+export async function countActiveFlowsSafe(
+  instanceUrl: string,
+  accessToken: string,
+  apiVersion: string,
+  requestId?: string
+): Promise<FlowSummary> {
+  try {
+    return await countFlowsViaFDV(instanceUrl, accessToken, apiVersion, requestId);
+  } catch (e1: any) {
+    try {
+      const r2 = await countFlowsViaFD(instanceUrl, accessToken, apiVersion, requestId);
+      return { ...r2, note: "FDV unavailable, used FlowDefinition." };
+    } catch (e2: any) {
+      try {
+        const r3 = await countFlowsViaFlow(instanceUrl, accessToken, apiVersion, requestId);
+        return { ...r3, note: "FDV/FD unavailable, used Flow. May be less accurate." };
+      } catch (e3: any) {
+        return {
+          total: null,
+          active: null,
+          available: false,
+          method: "none",
+          note: String(e3?.message || e2?.message || e1?.message || "unknown error"),
+        };
+      }
+    }
+  }
+}
 
 // Helper: Safe Tooling API count query
 async function safeToolingCount(
@@ -30,10 +138,11 @@ export async function fetchAutomationIndex(
   const logger = createLogger(requestId);
   
   try {
-    // Run flows and triggers in parallel
-    const [flows, triggers] = await Promise.all([
+    // Run flows, triggers, and flow counts in parallel
+    const [flows, triggers, flowCounts] = await Promise.all([
       getFlows(instanceUrl, accessToken, apiVersion, requestId),
       getTriggers(instanceUrl, accessToken, apiVersion, requestId),
+      countActiveFlowsSafe(instanceUrl, accessToken, apiVersion, requestId),
     ]);
     
     // Get Validation Rules count via Tooling API
@@ -152,7 +261,8 @@ export async function fetchAutomationIndex(
     
     logger.info(
       { 
-        flows: flows.length, 
+        flows: flows.length,
+        flowSummary: { total: flowCounts.total, active: flowCounts.active, method: flowCounts.method },
         triggers: triggers.length,
         validationRules: validationRules.length,
         validationRulesCount: validationRulesCount.total,
@@ -164,6 +274,13 @@ export async function fetchAutomationIndex(
     
     return {
       flows,
+      flowSummary: {
+        total: flowCounts.total,
+        active: flowCounts.active,
+        available: flowCounts.available,
+        method: flowCounts.method,
+        note: flowCounts.note,
+      },
       triggers,
       validationRules: validationRules.length > 0 ? validationRules : validationRulesCount,
       workflowRules: workflowRulesCount,

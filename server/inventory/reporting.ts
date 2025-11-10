@@ -11,6 +11,7 @@ async function fetchCoverageData(
   accessToken: string,
   apiVersion: string,
   apexClasses: Array<{ id: string; name: string }>,
+  apexTriggers: Array<{ id: string; name: string }>,
   requestId: string | undefined,
   logger: ReturnType<typeof createLogger>
 ): Promise<CodeIndex["coverage"] | undefined> {
@@ -26,6 +27,7 @@ async function fetchCoverageData(
       accessToken,
       apiVersion,
       apexClasses,
+      apexTriggers,
       requestId,
       logger
     );
@@ -45,10 +47,14 @@ async function fetchCoverageDataInternal(
   accessToken: string,
   apiVersion: string,
   apexClasses: Array<{ id: string; name: string }>,
+  apexTriggers: Array<{ id: string; name: string }>,
   requestId: string | undefined,
   logger: ReturnType<typeof createLogger>
 ): Promise<CodeIndex["coverage"]> {
-  const classMap = new Map(apexClasses.map((c: { id: string; name: string }) => [c.id, c.name]));
+  // Build map of both classes and triggers (coverage includes both)
+  const classMap = new Map<string, string>();
+  apexClasses.forEach((c) => classMap.set(c.id, c.name));
+  apexTriggers.forEach((t) => classMap.set(t.id, t.name));
   
   // Fetch org-wide coverage
   const orgWideData = await fetchOrgWideCoverage(
@@ -239,6 +245,7 @@ export async function fetchCodeIndex(
           accessToken,
           apiVersion,
           apexClasses,
+          apexTriggers,
           requestId,
           logger
         ),

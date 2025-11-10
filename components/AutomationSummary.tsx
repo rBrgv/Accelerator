@@ -19,6 +19,11 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
     return acc;
   }, {} as Record<string, typeof automation.flows>);
 
+  // Calculate active flow ratio from flowSummary if available
+  const totalFlows = automation.flowSummary?.total ?? automation.flows.length;
+  const activeFlows = automation.flowSummary?.active ?? automation.flows.filter(f => f.status === "Active").length;
+  const activeRatio = totalFlows > 0 ? activeFlows / totalFlows : 0;
+
   const recordTriggeredFlows = automation.flows.filter(f => f.processType === "RecordTriggeredFlow" || f.triggerType);
   const flowsByObject = recordTriggeredFlows.reduce((acc, flow) => {
     const obj = flow.object || "Unknown";
@@ -76,9 +81,12 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="p-4 bg-white rounded-lg shadow-sm">
               <div className="text-xs text-gray-600 uppercase">Total Flows</div>
-              <div className="text-2xl font-bold text-blue-900">{automation.flows.length}</div>
+              <div className="text-2xl font-bold text-blue-900">{automation.flowSummary?.total ?? automation.flows.length}</div>
               <div className="text-xs text-gray-500 mt-1">
-                {automation.flows.filter(f => f.status === "Active").length} active
+                {automation.flowSummary?.active ?? automation.flows.filter(f => f.status === "Active").length} active
+                {automation.flowSummary?.method && (
+                  <span className="ml-1 text-gray-400">({automation.flowSummary.method})</span>
+                )}
               </div>
             </div>
             <div className="p-4 bg-white rounded-lg shadow-sm">
@@ -144,15 +152,24 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Flows by Process Type</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {Object.entries(flowsByProcessType).map(([type, flows]) => (
-                    <div key={type} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="text-xs text-gray-600">{type}</div>
-                      <div className="text-lg font-bold">{flows.length}</div>
-                      <div className="text-xs text-gray-500">
-                        {flows.filter(f => f.status === "Active").length} active
+                  {Object.entries(flowsByProcessType).map(([type, flows]) => {
+                    // Use flowSummary ratio if available, otherwise use status filter
+                    const estimatedActive = automation.flowSummary 
+                      ? Math.round(flows.length * activeRatio)
+                      : flows.filter(f => f.status === "Active").length;
+                    return (
+                      <div key={type} className="p-3 bg-gray-50 rounded-lg">
+                        <div className="text-xs text-gray-600">{type}</div>
+                        <div className="text-lg font-bold">{flows.length}</div>
+                        <div className="text-xs text-gray-500">
+                          {estimatedActive} active
+                          {automation.flowSummary && (
+                            <span className="ml-1 text-gray-400" title="Estimated from flowSummary ratio">~</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

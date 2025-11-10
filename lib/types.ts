@@ -113,8 +113,17 @@ export interface AutomationCount {
   note?: string;
 }
 
+export interface FlowSummary {
+  total: number | null;
+  active: number | null;
+  available: boolean;
+  method?: string;
+  note?: string;
+}
+
 export interface AutomationIndex {
   flows: Flow[];
+  flowSummary?: FlowSummary;
   triggers: Trigger[];
   validationRules: ValidationRule[] | AutomationCount;
   workflowRules?: WorkflowRule[] | AutomationCount;
