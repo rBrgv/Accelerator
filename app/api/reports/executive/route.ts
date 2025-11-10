@@ -5,7 +5,16 @@ import { generateExecutiveReportMarkdown } from "@/server/reports/executiveRepor
 import { createLogger } from "@/server/logger";
 import { ScanOutput } from "@/lib/types";
 import { marked } from "marked";
-import puppeteer from "puppeteer";
+
+// Dynamic import for Puppeteer - use puppeteer-core + @sparticuz/chromium on Vercel
+async function getPuppeteer() {
+  const isVercel = !!process.env.VERCEL;
+  if (isVercel) {
+    return require("puppeteer-core");
+  } else {
+    return require("puppeteer");
+  }
+}
 
 async function generateReport(scanOutput: ScanOutput, requestId: string) {
   const logger = createLogger(requestId);
@@ -25,6 +34,9 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
     const pdfTimeout = isVercel ? 25000 : 30000; // 25s on Vercel, 30s locally
     
     const pdfPromise = (async () => {
+      // Get the right Puppeteer instance
+      const puppeteer = await getPuppeteer();
+      
       // Vercel-specific Puppeteer configuration
       const launchOptions: any = {
         headless: true,
@@ -40,9 +52,11 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
         ],
       };
 
-      // On Vercel, we might need to use executablePath if chromium is bundled
-      if (isVercel && process.env.CHROMIUM_PATH) {
-        launchOptions.executablePath = process.env.CHROMIUM_PATH;
+      // On Vercel, use @sparticuz/chromium
+      if (isVercel) {
+        const chromium = require("@sparticuz/chromium");
+        chromium.setGraphicsMode(false); // Disable graphics for serverless
+        launchOptions.executablePath = await chromium.executablePath();
       }
 
       browser = await puppeteer.launch(launchOptions);
