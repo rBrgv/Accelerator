@@ -49,8 +49,21 @@ export default function ReportGenerator({ scanId, scanData }: ReportGeneratorPro
       }
       
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to generate report");
+        // Try to parse error response, but handle cases where it's not JSON
+        let errorMessage = "Failed to generate report";
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            errorMessage = data.error || `Server error: ${response.status} ${response.statusText}`;
+          } else {
+            const text = await response.text();
+            errorMessage = text || `Server error: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       // Get filename from Content-Disposition header

@@ -10,18 +10,48 @@ import puppeteer from "puppeteer";
 async function generateReport(scanOutput: ScanOutput, requestId: string) {
   const logger = createLogger(requestId);
   
-  // Generate markdown
-  const markdown = generateExecutiveReportMarkdown(scanOutput);
+  let browser: any = null;
+  
+  try {
+    // Generate markdown
+    const markdown = generateExecutiveReportMarkdown(scanOutput);
 
-  // Convert to HTML
-  const html = await marked(markdown, { breaks: true, gfm: true });
+    // Convert to HTML
+    const html = await marked(markdown, { breaks: true, gfm: true });
 
-  // Generate PDF
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-  const page = await browser.newPage();
+    // Generate PDF with timeout protection
+    // Vercel has function timeout limits: 10s (Hobby) or 60s (Pro/Enterprise)
+    const isVercel = !!process.env.VERCEL;
+    const pdfTimeout = isVercel ? 25000 : 30000; // 25s on Vercel, 30s locally
+    
+    const pdfPromise = (async () => {
+      // Vercel-specific Puppeteer configuration
+      const launchOptions: any = {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process', // Required for Vercel serverless
+          '--disable-gpu',
+        ],
+      };
+
+      // On Vercel, we might need to use executablePath if chromium is bundled
+      if (isVercel && process.env.CHROMIUM_PATH) {
+        launchOptions.executablePath = process.env.CHROMIUM_PATH;
+      }
+
+      browser = await puppeteer.launch(launchOptions);
+      const page = await browser.newPage();
+      
+      // Set a shorter timeout for page operations on Vercel
+      if (isVercel) {
+        page.setDefaultTimeout(20000); // 20 seconds
+      }
   
   const fullHtml = `
     <!DOCTYPE html>
@@ -106,27 +136,51 @@ async function generateReport(scanOutput: ScanOutput, requestId: string) {
     </html>
   `;
 
-  await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
-  const pdfBuffer = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-    margin: {
-      top: '20mm',
-      right: '15mm',
-      bottom: '20mm',
-      left: '15mm',
-    },
-  });
+      // Use a shorter wait on Vercel to avoid timeouts
+      await page.setContent(fullHtml, { 
+        waitUntil: isVercel ? 'domcontentloaded' : 'networkidle0',
+        timeout: isVercel ? 15000 : 30000 
+      });
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '20mm',
+          right: '15mm',
+          bottom: '20mm',
+          left: '15mm',
+        },
+      });
 
-  await browser.close();
+      await browser.close();
+      browser = null;
 
-  const filename = `executive-readiness-summary-${new Date().toISOString().split('T')[0]}.pdf`;
-  return new NextResponse(pdfBuffer as any, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    },
-  });
+      const filename = `executive-readiness-summary-${new Date().toISOString().split('T')[0]}.pdf`;
+      return new NextResponse(pdfBuffer as any, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        },
+      });
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("PDF generation timed out after 30 seconds")), pdfTimeout)
+    );
+
+    return await Promise.race([pdfPromise, timeoutPromise]);
+  } catch (error: any) {
+    // Clean up browser if it's still open
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        // Ignore close errors
+      }
+    }
+    logger.error({ error: error.message, stack: error.stack }, "Failed to generate PDF");
+    throw error; // Re-throw to be handled by the route handler
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -169,11 +223,29 @@ export async function POST(request: NextRequest) {
 
   try {
     const session = await requireSession();
-    const body = await request.json();
+    
+    // Try to parse JSON body with better error handling
+    let body: any;
+    try {
+      const text = await request.text();
+      if (!text || text.trim().length === 0) {
+        return NextResponse.json(
+          { error: "Request body is empty. Please provide scan data." },
+          { status: 400 }
+        );
+      }
+      body = JSON.parse(text);
+    } catch (parseError: any) {
+      logger.error({ error: parseError.message }, "Failed to parse request body as JSON");
+      return NextResponse.json(
+        { error: "Invalid JSON in request body. Please provide valid scan data." },
+        { status: 400 }
+      );
+    }
 
     if (!body || !body.source || !body.inventory) {
       return NextResponse.json(
-        { error: "Invalid scan data. Please provide a valid ScanOutput object." },
+        { error: "Invalid scan data. Please provide a valid ScanOutput object with 'source' and 'inventory' properties." },
         { status: 400 }
       );
     }
@@ -184,8 +256,9 @@ export async function POST(request: NextRequest) {
     return generateReport(scanOutput, requestId);
   } catch (error: any) {
     logger.error({ error: error.message, stack: error.stack }, "Failed to generate executive report");
+    // Always return valid JSON, even on error
     return NextResponse.json(
-      { error: "Failed to generate report", traceId: requestId },
+      { error: error.message || "Failed to generate report", traceId: requestId },
       { status: 500 }
     );
   }
