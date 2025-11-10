@@ -1,17 +1,19 @@
 "use client";
 
-import { ObjectStat, AutomationIndex } from "@/lib/types";
+import { ObjectStat, AutomationIndex, CodeIndex } from "@/lib/types";
 import { useState } from "react";
+import CollapsibleSection from "./CollapsibleSection";
 
 interface ObjectsTableProps {
   objects: ObjectStat[];
   automation?: AutomationIndex;
+  code?: CodeIndex;
 }
 
-export default function ObjectsTable({ objects, automation }: ObjectsTableProps) {
+export default function ObjectsTable({ objects, automation, code }: ObjectsTableProps) {
   const [sortField, setSortField] = useState<"name" | "recordCount">("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [activeTab, setActiveTab] = useState<"withRecords" | "noRecords" | "withFlows" | "withTriggers" | "withVRs">("withRecords");
+  const [activeTab, setActiveTab] = useState<"withRecords" | "noRecords" | "withFlows" | "withTriggers" | "withVRs" | "apexClasses">("withRecords");
 
   // Build automation maps
   const objectsWithFlows = new Set<string>();
@@ -25,7 +27,10 @@ export default function ObjectsTable({ objects, automation }: ObjectsTableProps)
     automation.triggers.forEach(trigger => {
       if (trigger.tableEnumOrId) objectsWithTriggers.add(trigger.tableEnumOrId);
     });
-    automation.validationRules.forEach(vr => {
+    const validationRulesArray = Array.isArray(automation.validationRules) 
+      ? automation.validationRules 
+      : [];
+    validationRulesArray.forEach(vr => {
       const objName = vr.fullName.split(".")[0];
       if (objName) objectsWithVRs.add(objName);
     });
@@ -44,6 +49,8 @@ export default function ObjectsTable({ objects, automation }: ObjectsTableProps)
         return objects.filter(obj => objectsWithTriggers.has(obj.name));
       case "withVRs":
         return objects.filter(obj => objectsWithVRs.has(obj.name));
+      case "apexClasses":
+        return [];
       default:
         return objects;
     }
@@ -89,28 +96,29 @@ export default function ObjectsTable({ objects, automation }: ObjectsTableProps)
   const flowsCount = objectsWithFlows.size;
   const triggersCount = objectsWithTriggers.size;
   const vrsCount = objectsWithVRs.size;
+  const apexClassesCount = code?.apexClasses?.length ?? 0;
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Object Inventory & Health</h3>
-          <div className="flex gap-4 text-sm text-gray-600">
-            <span>Total: {objects.length}</span>
-            <span>Custom: {objects.filter(o => o.isCustom).length}</span>
-            <span>M-D: {masterDetailCount}</span>
-            <span>Ext ID: {externalIdCount}</span>
-          </div>
-        </div>
-        
-        {/* Tabs */}
-        <div className="flex space-x-1 border-b">
+    <CollapsibleSection 
+      title="Object Inventory & Health" 
+      defaultOpen={true}
+    >
+      <div className="mb-4 flex gap-4 text-sm text-gray-600">
+        <span>Total: {objects.length}</span>
+        <span>Custom: {objects.filter(o => o.isCustom).length}</span>
+        <span>M-D: {masterDetailCount}</span>
+        <span>Ext ID: {externalIdCount}</span>
+      </div>
+      
+      {/* Tabs */}
+      <div className="flex space-x-1 border-b mb-4">
           {[
             { id: "withRecords" as const, label: `With Records (${objectsWithRecords})` },
             { id: "noRecords" as const, label: `No Records (${objectsNoRecords})` },
             { id: "withFlows" as const, label: `With Flows (${flowsCount})` },
             { id: "withTriggers" as const, label: `With Triggers (${triggersCount})` },
             { id: "withVRs" as const, label: `With VRs (${vrsCount})` },
+            ...(apexClassesCount > 0 ? [{ id: "apexClasses" as const, label: `Apex Classes (${apexClassesCount})` }] : []),
           ].map(tab => (
             <button
               key={tab.id}
@@ -124,8 +132,8 @@ export default function ObjectsTable({ objects, automation }: ObjectsTableProps)
               {tab.label}
             </button>
           ))}
-        </div>
       </div>
+      
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50">
@@ -139,16 +147,62 @@ export default function ObjectsTable({ objects, automation }: ObjectsTableProps)
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th
                 className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort("recordCount")}
+                onClick={() => activeTab !== "apexClasses" && handleSort("recordCount")}
               >
-                Records {sortField === "recordCount" && (sortDirection === "asc" ? "↑" : "↓")}
+                {activeTab === "apexClasses" ? "Coverage" : `Records ${sortField === "recordCount" && (sortDirection === "asc" ? "↑" : "↓")}`}
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Related</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Badges</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {sortedObjects.length === 0 ? (
+            {activeTab === "apexClasses" && code?.apexClasses ? (
+              code.apexClasses.length > 0 ? (
+                [...code.apexClasses]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((cls) => {
+                    // Find coverage data for this class
+                    const coverage = code?.coverage?.byClass?.find((c: { id: string }) => c.id === cls.id);
+                    const coveragePercent = coverage?.percent;
+                    
+                    return (
+                      <tr key={cls.id} className="hover:bg-blue-50">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{cls.name}</div>
+                          <div className="text-xs text-gray-500 font-mono">{cls.id}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">Apex Class</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {coverage && coveragePercent !== undefined ? (
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                                coveragePercent >= 75 ? "bg-green-100 text-green-800" :
+                                coveragePercent >= 50 ? "bg-yellow-100 text-yellow-800" :
+                                "bg-red-100 text-red-800"
+                              }`}>
+                                {coveragePercent}%
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                ({coverage.numLinesCovered.toLocaleString()}/{coverage.numLinesCovered + coverage.numLinesUncovered})
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">No coverage data</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">API Version: {cls.apiVersion}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Code</span>
+                        </td>
+                      </tr>
+                    );
+                  })
+              ) : (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-500">No Apex classes found</td></tr>
+              )
+            ) : sortedObjects.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center">
@@ -229,7 +283,7 @@ export default function ObjectsTable({ objects, automation }: ObjectsTableProps)
           </tbody>
         </table>
       </div>
-    </div>
+    </CollapsibleSection>
   );
 }
 

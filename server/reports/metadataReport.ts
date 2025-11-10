@@ -127,8 +127,15 @@ export function generateMetadataReportMarkdown(scan: ScanOutput): string {
   md += `\n`;
 
   // Validation Rules
-  md += `### Validation Rules (${scan.inventory.automation.validationRules.length})\n\n`;
-  const vrsByObject = scan.inventory.automation.validationRules.reduce((acc, vr) => {
+  const validationRulesArray = Array.isArray(scan.inventory.automation.validationRules)
+    ? scan.inventory.automation.validationRules
+    : [];
+  const validationRulesCount = Array.isArray(scan.inventory.automation.validationRules)
+    ? scan.inventory.automation.validationRules.length
+    : (scan.inventory.automation.validationRules?.total ?? 0);
+  
+  md += `### Validation Rules (${validationRulesCount})\n\n`;
+  const vrsByObject = validationRulesArray.reduce((acc, vr) => {
     const obj = vr.fullName.split(".")[0] || "Unknown";
     acc[obj] = (acc[obj] || 0) + 1;
     return acc;

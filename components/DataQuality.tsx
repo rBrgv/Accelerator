@@ -38,9 +38,49 @@ export default function DataQuality({ scanData }: DataQualityProps) {
   const isMultiCurrencyEnabled = org.IsMultiCurrencyEnabled || false;
   const isStateCountryPicklistsEnabled = org.IsStateCountryPicklistsEnabled || false;
   
+  // Helper component for utilization bar
+  function UtilBar({ pct }: { pct: number }) {
+    const clamped = Math.min(100, Math.max(0, pct));
+    return (
+      <div className="h-2 w-full rounded bg-gray-200">
+        <div className="h-2 rounded bg-gray-800" style={{ width: `${clamped}%` }} />
+      </div>
+    );
+  }
+
   return (
     <CollapsibleSection title="Data Quality & Shape" defaultOpen={false}>
       <div className="bg-white rounded-lg shadow-md p-6">
+        {/* Storage Utilization Section */}
+        {scanData.source.storage && (
+          <section className="mb-6 pb-6 border-b">
+            <h3 className="text-lg font-semibold mb-3">Storage Utilization</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Data Storage</span>
+                  <span>
+                    {scanData.source.storage.data.usedMb} / {scanData.source.storage.data.maxMb} MB ({scanData.source.storage.data.usedPct}%)
+                  </span>
+                </div>
+                <UtilBar pct={scanData.source.storage.data.usedPct} />
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>File Storage</span>
+                  <span>
+                    {scanData.source.storage.file.usedMb} / {scanData.source.storage.file.maxMb} MB ({scanData.source.storage.file.usedPct}%)
+                  </span>
+                </div>
+                <UtilBar pct={scanData.source.storage.file.usedPct} />
+              </div>
+            </div>
+            {scanData.source.storage.note && (
+              <p className="mt-2 text-xs text-gray-500">{scanData.source.storage.note}</p>
+            )}
+          </section>
+        )}
+        
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="p-4 bg-blue-50 rounded-lg">
             <div className="text-sm text-gray-600">Required Fields (No Default)</div>

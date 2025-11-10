@@ -7,7 +7,6 @@ import KPI from "@/components/KPI";
 import ObjectsTable from "@/components/ObjectsTable";
 import ErrorBanner from "@/components/ErrorBanner";
 import AutomationSummary from "@/components/AutomationSummary";
-import AutomationKpis from "@/components/AutomationKpis";
 import FindingsPanel from "@/components/FindingsPanel";
 import SecuritySummary from "@/components/SecuritySummary";
 import IntegrationSummary from "@/components/IntegrationSummary";
@@ -15,11 +14,20 @@ import DeploymentSequence from "@/components/DeploymentSequence";
 import DataDeploymentSequence from "@/components/DataDeploymentSequence";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import DataQuality from "@/components/DataQuality";
-import LimitsPerformance from "@/components/LimitsPerformance";
 import ReportGenerator from "@/components/ReportGenerator";
+import CodeCoveragePanel from "@/components/CodeCoveragePanel";
 import { migrationPrerequisites } from "@/server/inventory/prerequisites";
 
 type ConnectionStatus = "checking" | "connected" | "disconnected";
+
+// Helper function to format bytes
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
 
 const SCAN_STEPS = [
   "Initializing scan...",
@@ -70,14 +78,44 @@ export default function DashboardPage() {
   }
 
   async function handleDisconnect() {
+    // Attempt to call logout API, but proceed with disconnect regardless of result
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const response = await fetch("/api/auth/logout", { 
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }).catch((fetchError) => {
+        // Network errors (CORS, offline, etc.) are caught here
+        console.warn("Logout API network error, proceeding with disconnect:", fetchError);
+        return null;
+      });
+      
+      if (response && !response.ok) {
+        console.warn(`Logout API returned ${response.status}, proceeding with disconnect`);
+      }
+    } catch (err) {
+      // Any other errors
+      console.warn("Logout API call failed, proceeding with disconnect:", err);
+    }
+    
+    // Always proceed with disconnect in UI (fire and forget)
+    performDisconnect();
+  }
+
+  function performDisconnect() {
+    try {
       setConnectionStatus("disconnected");
       setScanData(null);
       setError(null);
-      window.location.href = "/dashboard";
+      // Use setTimeout to ensure state updates before navigation
+      setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 0);
     } catch (err) {
-      console.error("Logout failed:", err);
+      // If state updates fail, force navigation
+      console.warn("Error during disconnect, forcing navigation:", err);
+      window.location.href = "/dashboard";
     }
   }
 
@@ -158,7 +196,7 @@ export default function DashboardPage() {
     return (
       <main className="min-h-screen bg-gray-50 p-8">
         <div className="container mx-auto max-w-4xl">
-          <h1 className="text-3xl font-bold mb-6">Salesforce Org Migration Accelerator</h1>
+          <h1 className="text-3xl font-bold mb-6 text-center">Salesforce Org Migration Accelerator</h1>
           <ConnectCard />
         </div>
       </main>
@@ -169,10 +207,21 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-gray-50 p-8">
       <div className="container mx-auto max-w-7xl">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Salesforce Org Migration Accelerator</h1>
+          <div className="flex items-center gap-3">
+            <img 
+              src="/logo-icon.jpeg" 
+              alt="Logo" 
+              className="h-10 w-10 object-contain flex-shrink-0"
+              onError={(e) => {
+                // Fallback if logo doesn't exist
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+            <h1 className="text-3xl font-bold">Salesforce Org Migration Accelerator</h1>
+          </div>
           <button
             onClick={handleDisconnect}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            className="px-5 py-2.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-lg hover:from-gray-200 hover:to-gray-300 font-medium shadow-sm hover:shadow-md transition-all duration-200 border border-gray-300"
           >
             Disconnect
           </button>
@@ -228,9 +277,9 @@ export default function DashboardPage() {
             {/* Enhanced Top KPIs Row */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
               <KPI
-                label="Edition"
-                value={scanData.source.edition || "Unknown"}
-                subtitle={scanData.source.organization?.isSandbox ? "Sandbox" : "Production"}
+                label="Organization"
+                value={scanData.source.organizationName || "Unknown"}
+                subtitle={`${scanData.source.edition || "Unknown"} • ${scanData.source.organization?.isSandbox ? "Sandbox" : "Production"}`}
               />
               <KPI
                 label="Total Records"
@@ -249,17 +298,58 @@ export default function DashboardPage() {
             </div>
             
             {/* Secondary KPIs Row */}
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
               <KPI
                 label="Apex Classes"
-                value={scanData.inventory.code.apexClasses.length}
-                subtitle={`${scanData.inventory.code.apexTriggers.length} triggers`}
+                value={scanData.inventory.code?.apexClasses?.length || 0}
+                subtitle={`${scanData.inventory.code?.apexTriggers?.length || 0} triggers`}
               />
               <KPI
                 label="Reports"
-                value={scanData.inventory.reporting.reports.length}
-                subtitle={`${scanData.inventory.reporting.dashboards.length} dashboards`}
+                value={scanData.inventory.reporting?.reports?.length || 0}
+                subtitle={`${scanData.inventory.reporting?.dashboards?.length || 0} dashboards`}
               />
+              <KPI
+                label="Flows"
+                value={scanData.inventory.automation?.flows?.length || 0}
+                icon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                }
+              />
+              <KPI
+                label="Triggers"
+                value={scanData.inventory.automation?.triggers?.filter((t) => t.status === "Active").length || 0}
+                subtitle={`Total: ${scanData.inventory.automation?.triggers?.length || 0}`}
+                icon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                }
+              />
+              <KPI
+                label="Validation Rules"
+                value={
+                  Array.isArray(scanData.inventory.automation?.validationRules)
+                    ? scanData.inventory.automation.validationRules.filter((vr) => vr.active).length
+                    : (scanData.inventory.automation?.validationRules?.active ?? 0)
+                }
+                subtitle={`Total: ${
+                  Array.isArray(scanData.inventory.automation?.validationRules)
+                    ? scanData.inventory.automation.validationRules.length
+                    : (scanData.inventory.automation?.validationRules?.total ?? 'n/a')
+                }`}
+                icon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                }
+              />
+            </div>
+
+            <div className="mb-6">
+              <AutomationSummary automation={scanData.inventory.automation} />
             </div>
 
             {scanData.inventory.security && (
@@ -274,17 +364,18 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <AutomationKpis automation={scanData.inventory.automation} />
+            {scanData.inventory.code && (
+              <div className="mb-6">
+                <CodeCoveragePanel code={scanData.inventory.code} />
+              </div>
+            )}
 
             <div className="mb-6">
               <ObjectsTable 
                 objects={scanData.inventory.sourceObjects} 
                 automation={scanData.inventory.automation}
+                code={scanData.inventory.code}
               />
-            </div>
-
-            <div className="mb-6">
-              <AutomationSummary automation={scanData.inventory.automation} />
             </div>
 
             {scanData.findings.length > 0 && (
@@ -341,14 +432,6 @@ export default function DashboardPage() {
 
             <div className="mb-6">
               <DataQuality scanData={scanData} />
-            </div>
-
-            <div className="mb-6">
-              <LimitsPerformance 
-                orgProfile={scanData.source} 
-                scanDuration={scanDuration ? scanDuration * 1000 : undefined}
-                scanDurationSeconds={scanDuration ?? undefined}
-              />
             </div>
 
             <div className="mb-6">

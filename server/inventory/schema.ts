@@ -14,9 +14,13 @@ async function discoverObjects(
   const logger = createLogger(requestId);
   
   try {
-    // Try REST API /sobjects/ endpoint first
+    // Try REST API /sobjects/ endpoint first (describeGlobal)
+    console.log(`[discoverObjects] Calling describeGlobal (/sobjects/)...`);
     const sobjects = await sfGet(instanceUrl, accessToken, `/services/data/${apiVersion}/sobjects/`, requestId);
     const allObjects = sobjects.sobjects || [];
+    
+    console.log(`[discoverObjects] describeGlobal returned ${allObjects.length} total objects`);
+    console.log(`[discoverObjects] Sample objects: ${allObjects.slice(0, 5).map((o: any) => o.name).join(', ')}`);
     
     // Filter for custom objects and key standard objects
     const customObjects = allObjects
@@ -27,14 +31,24 @@ async function discoverObjects(
       .filter((obj: any) => !obj.custom && DEFAULT_FOCUS_OBJECTS.includes(obj.name))
       .map((obj: any) => obj.name);
     
+    console.log(`[discoverObjects] Found ${customObjects.length} custom objects, ${standardObjects.length} standard focus objects`);
+    
     const discovered = [...new Set([...DEFAULT_FOCUS_OBJECTS, ...standardObjects, ...customObjects])];
-    logger.info({ count: discovered.length }, "Discovered objects");
+    logger.info({ count: discovered.length, customCount: customObjects.length, standardCount: standardObjects.length }, "Discovered objects");
+    console.log(`[discoverObjects] Total discovered: ${discovered.length} objects`);
     return discovered;
-  } catch (error) {
-    logger.warn({ error }, "REST API discovery failed, trying Tooling API");
+  } catch (error: any) {
+    const errorMsg = error.response?.data?.message || error.message;
+    const status = error.response?.status;
+    console.error(`[discoverObjects] REST API describeGlobal FAILED: ${errorMsg} (Status: ${status || 'unknown'})`);
+    if (error.response?.data) {
+      console.error(`[discoverObjects] Error details:`, JSON.stringify(error.response.data, null, 2));
+    }
+    logger.warn({ error: errorMsg, status }, "REST API discovery failed, trying Tooling API");
     
     // Fallback to Tooling API
     try {
+      console.log(`[discoverObjects] Trying Tooling API EntityDefinition query...`);
       let allObjects: string[] = [];
       let done = false;
       let nextRecordsUrl = "";
@@ -45,7 +59,9 @@ async function discoverObjects(
           : `SELECT QualifiedApiName FROM EntityDefinition WHERE IsCustomizable = true LIMIT 200`;
         
         const result = await soql(instanceUrl, accessToken, apiVersion, query, requestId, { tooling: true });
-        allObjects.push(...result.records.map((r: any) => r.QualifiedApiName));
+        const recordCount = result.records?.length || 0;
+        console.log(`[discoverObjects] EntityDefinition query returned ${recordCount} records`);
+        allObjects.push(...(result.records || []).map((r: any) => r.QualifiedApiName));
         
         if (result.done) {
           done = true;
@@ -55,10 +71,15 @@ async function discoverObjects(
       }
       
       const discovered = [...new Set([...DEFAULT_FOCUS_OBJECTS, ...allObjects])];
+      console.log(`[discoverObjects] Tooling API discovery: ${discovered.length} total objects`);
       logger.info({ count: discovered.length }, "Discovered objects via Tooling API");
       return discovered;
-    } catch (toolingError) {
-      logger.error({ error: toolingError }, "Tooling API discovery also failed");
+    } catch (toolingError: any) {
+      const errorMsg = toolingError.response?.data?.message || toolingError.message;
+      const status = toolingError.response?.status;
+      console.error(`[discoverObjects] Tooling API discovery FAILED: ${errorMsg} (Status: ${status || 'unknown'})`);
+      logger.error({ error: errorMsg, status }, "Tooling API discovery also failed");
+      console.log(`[discoverObjects] Falling back to DEFAULT_FOCUS_OBJECTS (${DEFAULT_FOCUS_OBJECTS.length} objects)`);
       return DEFAULT_FOCUS_OBJECTS;
     }
   }

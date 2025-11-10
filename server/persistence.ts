@@ -187,8 +187,14 @@ export async function diffScan(
   }
   
   // Compare validation rules
-  const fromVrNames = new Set(fromScan.inventory.automation.validationRules.map((vr) => vr.fullName));
-  const toVrNames = new Set(toScan.inventory.automation.validationRules.map((vr) => vr.fullName));
+  const fromVrArray = Array.isArray(fromScan.inventory.automation.validationRules)
+    ? fromScan.inventory.automation.validationRules
+    : [];
+  const toVrArray = Array.isArray(toScan.inventory.automation.validationRules)
+    ? toScan.inventory.automation.validationRules
+    : [];
+  const fromVrNames = new Set(fromVrArray.map((vr) => vr.fullName));
+  const toVrNames = new Set(toVrArray.map((vr) => vr.fullName));
   
   const addedValidationRules = Array.from(toVrNames).filter((n) => !fromVrNames.has(n));
   const removedValidationRules = Array.from(fromVrNames).filter((n) => !toVrNames.has(n));

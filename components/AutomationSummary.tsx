@@ -35,14 +35,38 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
     return acc;
   }, {} as Record<string, typeof automation.triggers>);
 
-  // Validation Rule analysis
-  const vrsByObject = automation.validationRules.reduce((acc, vr) => {
+  // Validation Rule analysis - handle both array and AutomationCount types
+  const validationRulesArray = Array.isArray(automation.validationRules) 
+    ? automation.validationRules 
+    : [];
+  const vrsByObject = validationRulesArray.reduce((acc, vr) => {
     // Extract object from fullName (format: ObjectName.RuleName)
     const obj = vr.fullName.split(".")[0] || "Unknown";
     if (!acc[obj]) acc[obj] = [];
     acc[obj].push(vr);
     return acc;
-  }, {} as Record<string, typeof automation.validationRules>);
+  }, {} as Record<string, typeof validationRulesArray>);
+  
+  const validationRulesCount = Array.isArray(automation.validationRules)
+    ? automation.validationRules.length
+    : (automation.validationRules?.total ?? 0);
+  const validationRulesActive = Array.isArray(automation.validationRules)
+    ? automation.validationRules.filter(vr => vr.active).length
+    : (automation.validationRules?.active ?? 0);
+  
+  const workflowRulesCount = Array.isArray(automation.workflowRules)
+    ? automation.workflowRules.length
+    : (automation.workflowRules?.total ?? 0);
+  const workflowRulesActive = Array.isArray(automation.workflowRules)
+    ? automation.workflowRules.filter(wr => wr.active).length
+    : (automation.workflowRules?.active ?? null);
+  
+  const approvalProcessesCount = Array.isArray(automation.approvalProcesses)
+    ? automation.approvalProcesses.length
+    : (automation.approvalProcesses?.total ?? 0);
+  const approvalProcessesActive = Array.isArray(automation.approvalProcesses)
+    ? automation.approvalProcesses.filter(ap => ap.active).length
+    : (automation.approvalProcesses?.active ?? null);
 
   return (
     <CollapsibleSection title="Automation Posture" defaultOpen={true}>
@@ -66,23 +90,23 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
             </div>
             <div className="p-4 bg-white rounded-lg shadow-sm">
               <div className="text-xs text-gray-600 uppercase">Validation Rules</div>
-              <div className="text-2xl font-bold text-orange-900">{automation.validationRules.length}</div>
+              <div className="text-2xl font-bold text-orange-900">{validationRulesCount}</div>
               <div className="text-xs text-gray-500 mt-1">
-                {automation.validationRules.filter(vr => vr.active).length} active
+                {validationRulesActive !== null ? `${validationRulesActive} active` : 'n/a'}
               </div>
             </div>
             <div className="p-4 bg-white rounded-lg shadow-sm">
               <div className="text-xs text-gray-600 uppercase">Workflow Rules</div>
-              <div className="text-2xl font-bold text-gray-900">{automation.workflowRules?.length || 0}</div>
+              <div className="text-2xl font-bold text-gray-900">{workflowRulesCount}</div>
               <div className="text-xs text-gray-500 mt-1">
-                {automation.workflowRules?.filter(wr => wr.active).length || 0} active
+                {workflowRulesActive !== null ? `${workflowRulesActive} active` : 'n/a'}
               </div>
             </div>
             <div className="p-4 bg-white rounded-lg shadow-sm">
               <div className="text-xs text-gray-600 uppercase">Approval Processes</div>
-              <div className="text-2xl font-bold text-green-900">{automation.approvalProcesses?.length || 0}</div>
+              <div className="text-2xl font-bold text-green-900">{approvalProcessesCount}</div>
               <div className="text-xs text-gray-500 mt-1">
-                {automation.approvalProcesses?.filter(ap => ap.active).length || 0} active
+                {approvalProcessesActive !== null ? `${approvalProcessesActive} active` : 'n/a'}
               </div>
             </div>
           </div>
@@ -95,7 +119,7 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
               { id: "overview", label: "Overview" },
               { id: "flows", label: `Flows (${automation.flows.length})` },
               { id: "triggers", label: `Triggers (${automation.triggers.length})` },
-              { id: "validation", label: `VRs (${automation.validationRules.length})` },
+              { id: "validation", label: `VRs (${validationRulesCount})` },
             ].map(tab => (
               <button
                 key={tab.id}

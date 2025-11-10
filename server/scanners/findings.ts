@@ -1,9 +1,10 @@
-import { Finding, ObjectStat, AutomationIndex } from "@/lib/types";
+import { Finding, ObjectStat, AutomationIndex, CodeIndex } from "@/lib/types";
 import { createLogger } from "../logger";
 
 export function scanFindings(
   objects: ObjectStat[],
   automation: AutomationIndex,
+  code?: CodeIndex,
   requestId?: string
 ): Finding[] {
   const logger = createLogger(requestId);
@@ -114,8 +115,13 @@ export function scanFindings(
   }
   
   // Scan for validation rules that could block data migration
-  const vrsByObject = new Map<string, typeof automation.validationRules>();
-  automation.validationRules.forEach(vr => {
+  // Handle both array and AutomationCount types for validationRules
+  const validationRulesArray = Array.isArray(automation.validationRules) 
+    ? automation.validationRules 
+    : [];
+  
+  const vrsByObject = new Map<string, typeof validationRulesArray>();
+  validationRulesArray.forEach(vr => {
     const objName = vr.fullName.split(".")[0];
     if (objName) {
       if (!vrsByObject.has(objName)) {
@@ -276,7 +282,10 @@ export function scanFindings(
   }
   
   // Scan for automation density
-  const automationCount = automation.flows.length + automation.triggers.length + automation.validationRules.length;
+  const validationRulesCount = Array.isArray(automation.validationRules) 
+    ? automation.validationRules.length 
+    : 0;
+  const automationCount = automation.flows.length + automation.triggers.length + validationRulesCount;
   const objectCount = objects.length;
   const automationDensity = objectCount > 0 ? automationCount / objectCount : 0;
   
@@ -296,6 +305,79 @@ export function scanFindings(
         "Consider automation optimization opportunities",
       ],
     });
+  }
+  
+  // Scan for code coverage issues (non-blocking, only if coverage data exists)
+  try {
+    if (code?.coverage && code.coverage.byClass && code.coverage.byClass.length > 0) {
+      const { orgWidePercent, byClass } = code.coverage;
+      
+      // Org-wide coverage finding
+      if (orgWidePercent !== null && orgWidePercent !== undefined) {
+        if (orgWidePercent < 75) {
+          findings.push({
+            id: "LOW_ORG_COVERAGE",
+            severity: orgWidePercent < 50 ? "HIGH" : "MEDIUM",
+            category: "Code Quality",
+            title: `Low org-wide code coverage: ${orgWidePercent}%`,
+            description: `Org-wide Apex code coverage is ${orgWidePercent}%, which is below the recommended 75% threshold. This may impact production deployment requirements.`,
+            objects: [],
+            impact: "Salesforce requires 75% code coverage for production deployments. Low coverage may block deployments or require additional test development.",
+            remediation: [
+              "Review and improve test class coverage",
+              "Identify classes with low or no coverage",
+              "Develop comprehensive test classes for uncovered code",
+              "Aim for at least 75% org-wide coverage before production deployment",
+              "Consider using test data factories to improve test coverage",
+            ],
+          });
+        }
+      }
+      
+      // Per-class coverage findings
+      const classesBelow75 = byClass.filter(c => (c.percent ?? 0) < 75);
+      const classesBelow50 = byClass.filter(c => (c.percent ?? 0) < 50);
+      
+      if (classesBelow50.length > 0) {
+        findings.push({
+          id: "CRITICAL_COVERAGE_GAP",
+          severity: "HIGH",
+          category: "Code Quality",
+          title: `${classesBelow50.length} Apex classes/triggers below 50% coverage`,
+          description: `${classesBelow50.length} Apex classes or triggers have code coverage below 50%, which is critical for production deployment.`,
+          objects: classesBelow50.slice(0, 10).map(c => c.name), // Include first 10 class names
+          impact: "Classes with very low coverage (<50%) may fail deployment requirements and require immediate attention before migration.",
+          remediation: [
+            "Prioritize test development for classes below 50% coverage",
+            "Review each class to understand why coverage is low",
+            "Develop targeted test classes for critical business logic",
+            "Consider refactoring untestable code",
+            "Use code coverage reports to identify specific uncovered lines",
+          ],
+        });
+      }
+      
+      if (classesBelow75.length > classesBelow50.length) {
+        const classesBetween50And75 = classesBelow75.length - classesBelow50.length;
+        findings.push({
+          id: "MODERATE_COVERAGE_GAP",
+          severity: "MEDIUM",
+          category: "Code Quality",
+          title: `${classesBetween50And75} Apex classes/triggers between 50-75% coverage`,
+          description: `${classesBetween50And75} Apex classes or triggers have code coverage between 50% and 75%, which is below the recommended threshold.`,
+          objects: [],
+          impact: "Classes below 75% coverage may need additional test development to meet production deployment requirements.",
+          remediation: [
+            "Review coverage gaps in classes between 50-75%",
+            "Add test cases for uncovered code paths",
+            "Focus on edge cases and error handling",
+            "Ensure all critical business logic is tested",
+          ],
+        });
+      }
+    }
+  } catch (err: any) {
+    logger.debug({ error: err?.message }, "Error processing coverage findings - skipping");
   }
   
   logger.info({ findingsCount: findings.length }, "Findings scan completed");

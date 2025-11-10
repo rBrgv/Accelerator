@@ -44,7 +44,7 @@ export async function fetchSecurityIndex(
     ).catch(() => ({ records: [] }));
 
     // Fetch permission sets - try multiple approaches
-    let permSetsResult = { records: [] };
+    let permSetsResult: { records: any[] } = { records: [] };
     const permSetAttempts = [
       // Attempt 1: Simple REST query with minimal fields
       {

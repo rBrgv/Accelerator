@@ -1,6 +1,11 @@
 import { sfGet, soql } from "../salesforce/rest";
-import { OrgProfile } from "@/lib/types";
+import { OrgProfile, StorageUsage } from "@/lib/types";
 import { createLogger } from "../logger";
+
+function pct(used: number, max: number): number {
+  if (!max || max <= 0) return 0;
+  return Math.round((used / max) * 100);
+}
 
 export async function fetchOrgProfile(
   instanceUrl: string,
@@ -11,7 +16,7 @@ export async function fetchOrgProfile(
   const logger = createLogger(requestId);
   
   try {
-    const [limits, orgDescribe, licensesResult, identityInfo] = await Promise.all([
+    const [limitsData, orgDescribe, licensesResult, identityInfo] = await Promise.all([
       sfGet(instanceUrl, accessToken, `/services/data/${apiVersion}/limits`, requestId).catch(() => ({})),
       sfGet(instanceUrl, accessToken, `/services/data/${apiVersion}/sobjects/Organization/describe`, requestId).catch(() => ({})),
       soql(
@@ -41,6 +46,10 @@ export async function fetchOrgProfile(
     let isSandbox = false;
     let instanceName = "";
     let orgName = "";
+    let dataSpaceUsed: number | undefined;
+    let dataSpaceTotal: number | undefined;
+    let fileSpaceUsed: number | undefined;
+    let fileSpaceTotal: number | undefined;
     
     // Try to get Organization record directly via REST API using orgId from identity
     if (orgId) {
@@ -55,7 +64,12 @@ export async function fetchOrgProfile(
         isSandbox = orgRecord.IsSandbox === true;
         instanceName = orgRecord.InstanceName || "";
         orgName = orgRecord.Name || "";
-        logger.info({ orgId, edition, isSandbox }, "Fetched Organization record via REST API");
+        // Data and File Space fields (in bytes)
+        dataSpaceUsed = orgRecord.UsedDataSpace ? Number(orgRecord.UsedDataSpace) : undefined;
+        dataSpaceTotal = orgRecord.DataStorage ? Number(orgRecord.DataStorage) : (orgRecord.TotalDataSpace ? Number(orgRecord.TotalDataSpace) : undefined);
+        fileSpaceUsed = orgRecord.UsedFileSpace ? Number(orgRecord.UsedFileSpace) : undefined;
+        fileSpaceTotal = orgRecord.FileStorage ? Number(orgRecord.FileStorage) : (orgRecord.TotalFileSpace ? Number(orgRecord.TotalFileSpace) : undefined);
+        logger.info({ orgId, edition, isSandbox, orgName, dataSpaceUsed, fileSpaceUsed }, "Fetched Organization record via REST API");
       } catch (err: any) {
         logger.warn({ error: err.message, orgId }, "Could not fetch Organization record via REST API");
       }
@@ -80,7 +94,16 @@ export async function fetchOrgProfile(
           isSandbox = orgRecord.IsSandbox === true;
           instanceName = orgRecord.InstanceName || instanceName;
           orgName = orgRecord.Name || orgName;
-          logger.info({ orgId: identityInfo.organization_id, edition, isSandbox }, "Fetched Organization from identity orgId");
+          // Data and File Space fields (in bytes)
+          if (!dataSpaceUsed && orgRecord.UsedDataSpace) dataSpaceUsed = Number(orgRecord.UsedDataSpace);
+          if (!dataSpaceTotal) {
+            dataSpaceTotal = orgRecord.DataStorage ? Number(orgRecord.DataStorage) : (orgRecord.TotalDataSpace ? Number(orgRecord.TotalDataSpace) : undefined);
+          }
+          if (!fileSpaceUsed && orgRecord.UsedFileSpace) fileSpaceUsed = Number(orgRecord.UsedFileSpace);
+          if (!fileSpaceTotal) {
+            fileSpaceTotal = orgRecord.FileStorage ? Number(orgRecord.FileStorage) : (orgRecord.TotalFileSpace ? Number(orgRecord.TotalFileSpace) : undefined);
+          }
+          logger.info({ orgId: identityInfo.organization_id, edition, isSandbox, orgName }, "Fetched Organization from identity orgId");
         } catch (err: any) {
           logger.warn({ error: err.message }, "Could not fetch Organization from identity orgId");
         }
@@ -109,12 +132,58 @@ export async function fetchOrgProfile(
       }
     }
     
+    // Compute storage from limits (use the data we already fetched)
+    let storage: StorageUsage | undefined;
+    try {
+      const lim = limitsData || {};
+      
+      const dataMax = lim?.DataStorage?.Max ?? lim?.DataStorageMB?.Max ?? null;
+      const dataRem = lim?.DataStorage?.Remaining ?? lim?.DataStorageMB?.Remaining ?? null;
+      const fileMax = lim?.FileStorage?.Max ?? lim?.FileStorageMB?.Max ?? null;
+      const fileRem = lim?.FileStorage?.Remaining ?? lim?.FileStorageMB?.Remaining ?? null;
+      
+      if (dataMax != null && dataRem != null && fileMax != null && fileRem != null) {
+        const dataUsed = Math.max(0, Number(dataMax) - Number(dataRem));
+        const fileUsed = Math.max(0, Number(fileMax) - Number(fileRem));
+        storage = {
+          data: { 
+            usedMb: dataUsed, 
+            maxMb: Number(dataMax), 
+            remainingMb: Number(dataRem), 
+            usedPct: pct(dataUsed, Number(dataMax)) 
+          },
+          file: { 
+            usedMb: fileUsed, 
+            maxMb: Number(fileMax), 
+            remainingMb: Number(fileRem), 
+            usedPct: pct(fileUsed, Number(fileMax)) 
+          }
+        };
+        logger.info({ dataUsed, dataMax, fileUsed, fileMax }, "Storage computed from limits");
+      } else {
+        storage = {
+          data: { usedMb: 0, maxMb: 0, remainingMb: 0, usedPct: 0 },
+          file: { usedMb: 0, maxMb: 0, remainingMb: 0, usedPct: 0 },
+          note: "Storage limits not available for this org/API version"
+        };
+        logger.warn("Storage limits not available in /limits response");
+      }
+    } catch (e: any) {
+      storage = {
+        data: { usedMb: 0, maxMb: 0, remainingMb: 0, usedPct: 0 },
+        file: { usedMb: 0, maxMb: 0, remainingMb: 0, usedPct: 0 },
+        note: `Failed to fetch /limits: ${e?.message ?? "unknown error"}`
+      };
+      logger.warn({ error: e?.message }, "Failed to fetch limits for storage calculation");
+    }
+
     logger.info({ 
       orgId, 
       edition, 
       isSandbox,
       instanceName,
-      licenses: licensesResult.records?.length 
+      licenses: licensesResult.records?.length,
+      storageAvailable: !!storage && !storage.note
     }, "Org profile fetched");
 
     return {
@@ -122,7 +191,13 @@ export async function fetchOrgProfile(
       apiVersion,
       orgId,
       edition,
-      limits,
+      organizationName: orgName,
+      dataSpaceUsed,
+      dataSpaceTotal,
+      fileSpaceUsed,
+      fileSpaceTotal,
+      storage,
+      limits: limitsData,
       organization: {
         ...orgDescribe,
         isSandbox,

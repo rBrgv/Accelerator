@@ -147,23 +147,23 @@ export default function FindingsPanel({ findings }: FindingsPanelProps) {
     <CollapsibleSection title="Migration Findings" defaultOpen={true}>
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         {/* Summary Cards */}
-        <div className="p-6 border-b bg-gradient-to-r from-red-50 to-orange-50">
+        <div className="p-6 border-b bg-gradient-to-r from-red-50 via-orange-50 to-yellow-50">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-white rounded-lg shadow-sm">
-              <div className="text-xs text-gray-600 uppercase">Total Findings</div>
-              <div className="text-2xl font-bold text-gray-900">{findings.length}</div>
+            <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-100">
+              <div className="text-xs text-gray-600 uppercase tracking-wide font-medium">Total Findings</div>
+              <div className="text-2xl font-bold text-gray-900 mt-1">{findings.length}</div>
             </div>
-            <div className="p-4 bg-white rounded-lg shadow-sm">
-              <div className="text-xs text-gray-600 uppercase">High Severity</div>
-              <div className="text-2xl font-bold text-red-900">{highFindings.length}</div>
+            <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-red-100">
+              <div className="text-xs text-gray-600 uppercase tracking-wide font-medium">High Severity</div>
+              <div className="text-2xl font-bold text-red-900 mt-1">{highFindings.length}</div>
             </div>
-            <div className="p-4 bg-white rounded-lg shadow-sm">
-              <div className="text-xs text-gray-600 uppercase">Medium Severity</div>
-              <div className="text-2xl font-bold text-yellow-900">{mediumFindings.length}</div>
+            <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-yellow-100">
+              <div className="text-xs text-gray-600 uppercase tracking-wide font-medium">Medium Severity</div>
+              <div className="text-2xl font-bold text-yellow-900 mt-1">{mediumFindings.length}</div>
             </div>
-            <div className="p-4 bg-white rounded-lg shadow-sm">
-              <div className="text-xs text-gray-600 uppercase">Categories</div>
-              <div className="text-2xl font-bold text-blue-900">{Object.keys(findingsByCategory).length}</div>
+            <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-blue-100">
+              <div className="text-xs text-gray-600 uppercase tracking-wide font-medium">Categories</div>
+              <div className="text-2xl font-bold text-blue-900 mt-1">{Object.keys(findingsByCategory).length}</div>
             </div>
           </div>
         </div>

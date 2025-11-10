@@ -10,7 +10,12 @@ interface AutomationKpisProps {
 export default function AutomationKpis({ automation }: AutomationKpisProps) {
   const totalFlows = automation.flows.length;
   const activeTriggers = automation.triggers.filter((t) => t.status === "Active").length;
-  const activeVrs = automation.validationRules.filter((vr) => vr.active).length;
+  const validationRulesArray = Array.isArray(automation.validationRules) 
+    ? automation.validationRules 
+    : [];
+  const activeVrs = Array.isArray(automation.validationRules)
+    ? automation.validationRules.filter((vr) => vr.active).length
+    : (automation.validationRules?.active ?? 0);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -36,7 +41,11 @@ export default function AutomationKpis({ automation }: AutomationKpisProps) {
       <KPI
         label="Validation Rules"
         value={activeVrs}
-        subtitle={`Total: ${automation.validationRules.length}`}
+        subtitle={`Total: ${
+          Array.isArray(automation.validationRules)
+            ? automation.validationRules.length
+            : (automation.validationRules?.total ?? 'n/a')
+        }`}
         icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />

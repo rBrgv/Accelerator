@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_APP_NAME || "Salesforce Org Migration Accelerator",
   description: "Salesforce Org Migration Accelerator - Comprehensive org analysis and migration planning",
+  icons: {
+    icon: "/logo-icon.jpeg",
+  },
 };
 
 export default function RootLayout({

@@ -114,20 +114,39 @@ export async function runScan(
     const dependencyGraph = buildGraph(sourceObjects);
     
     // Scan for findings
-    const findings = scanFindings(sourceObjects, automation, requestId);
+    const findings = scanFindings(sourceObjects, automation, code, requestId);
     
-    // Calculate summary
+    // Calculate summary - handle both array and AutomationCount types
+    const validationRulesCount = Array.isArray(automation.validationRules) 
+      ? automation.validationRules.length 
+      : (automation.validationRules?.total ?? 0);
+    const workflowRulesCount = Array.isArray(automation.workflowRules)
+      ? automation.workflowRules.length
+      : (automation.workflowRules?.total ?? 0);
+    const approvalProcessesCount = Array.isArray(automation.approvalProcesses)
+      ? automation.approvalProcesses.length
+      : (automation.approvalProcesses?.total ?? 0);
+    
     const summary = {
       objects: sourceObjects.length,
       recordsApprox: sourceObjects.reduce((sum, obj) => sum + (obj.recordCount || 0), 0),
       flows: automation.flows.length,
       triggers: automation.triggers.length,
-      vrs: automation.validationRules.length,
+      vrs: validationRulesCount,
       findingsHigh: findings.filter((f) => f.severity === "HIGH").length,
       findingsMedium: findings.filter((f) => f.severity === "MEDIUM").length,
       findingsLow: findings.filter((f) => f.severity === "LOW").length,
     };
     
+    // Add storage KPIs to summary if available
+    if (source.storage && !source.storage.note) {
+      (summary as any).storage = {
+        dataUsedPct: source.storage.data.usedPct,
+        fileUsedPct: source.storage.file.usedPct,
+      };
+    }
+    
+    // Log summary
     logger.info({ summary }, "Scan completed successfully");
     
     return {

@@ -33,13 +33,34 @@ export async function POST(request: NextRequest) {
     );
 
     // Check if scan returned meaningful data
-    if (scanOutput.summary.objects === 0 && scanOutput.inventory.sourceObjects.length === 0) {
-      logger.warn("Scan returned no objects - possible auth issue");
+    // Only fail if we have NO data at all (not even standard objects)
+    // Some orgs may legitimately have 0 custom objects or 0 automation
+    const hasAnyData = 
+      scanOutput.inventory.sourceObjects.length > 0 ||
+      scanOutput.inventory.automation.flows.length > 0 ||
+      scanOutput.inventory.automation.triggers.length > 0 ||
+      scanOutput.inventory.code.apexClasses.length > 0 ||
+      scanOutput.inventory.code.apexTriggers.length > 0 ||
+      scanOutput.inventory.reporting.reports.length > 0;
+    
+    if (!hasAnyData) {
+      logger.warn("Scan returned no data at all - possible auth or permissions issue");
       return NextResponse.json(
-        { error: "Scan completed but no data was retrieved. Your access token may have expired. Please reconnect to Salesforce.", traceId: requestId },
+        { error: "Scan completed but no data was retrieved. This may indicate an authentication issue or insufficient API permissions. Please check your Salesforce connection and permissions.", traceId: requestId },
         { status: 401 }
       );
     }
+    
+    // Log summary for debugging
+    logger.info({
+      objects: scanOutput.summary.objects,
+      flows: scanOutput.summary.flows,
+      triggers: scanOutput.summary.triggers,
+      vrs: scanOutput.summary.vrs,
+      apexClasses: scanOutput.inventory.code.apexClasses.length,
+      apexTriggers: scanOutput.inventory.code.apexTriggers.length,
+      reports: scanOutput.inventory.reporting.reports.length,
+    }, "Scan data summary");
 
     // Save scan
     const orgConnectionId = await ensureOrgConnection(

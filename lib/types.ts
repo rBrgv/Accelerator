@@ -1,8 +1,20 @@
+export type StorageUsage = {
+  data: { usedMb: number; maxMb: number; remainingMb: number; usedPct: number };
+  file: { usedMb: number; maxMb: number; remainingMb: number; usedPct: number };
+  note?: string;
+};
+
 export interface OrgProfile {
   instanceUrl: string;
   apiVersion: string;
   orgId: string;
   edition?: string;
+  organizationName?: string;
+  dataSpaceUsed?: number; // in bytes
+  dataSpaceTotal?: number; // in bytes
+  fileSpaceUsed?: number; // in bytes
+  fileSpaceTotal?: number; // in bytes
+  storage?: StorageUsage;
   limits?: Record<string, any>;
   organization?: Record<string, any>;
   userLicenses?: Record<string, any>;
@@ -94,17 +106,36 @@ export interface ApprovalProcess {
   active: boolean;
 }
 
+export interface AutomationCount {
+  total: number | null;
+  active: number | null;
+  available: boolean;
+  note?: string;
+}
+
 export interface AutomationIndex {
   flows: Flow[];
   triggers: Trigger[];
-  validationRules: ValidationRule[];
-  workflowRules?: WorkflowRule[];
-  approvalProcesses?: ApprovalProcess[];
+  validationRules: ValidationRule[] | AutomationCount;
+  workflowRules?: WorkflowRule[] | AutomationCount;
+  approvalProcesses?: ApprovalProcess[] | AutomationCount;
 }
 
 export interface CodeIndex {
   apexClasses: Array<{ id: string; name: string; apiVersion: string }>;
   apexTriggers: Array<{ id: string; name: string; apiVersion: string }>;
+  coverage?: {
+    orgWidePercent?: number | null;
+    byClass: Array<{
+      id: string;
+      name: string;
+      numLinesCovered: number;
+      numLinesUncovered: number;
+      percent?: number;
+    }>;
+    lastComputedAt?: string | null;
+    note?: string;
+  };
 }
 
 export interface ReportingIndex {
@@ -157,6 +188,7 @@ export interface ScanSummary {
   findingsMedium: number;
   findingsLow: number;
   hash?: string;
+  storage?: { dataUsedPct?: number; fileUsedPct?: number };
 }
 
 export interface SecurityIndex {

@@ -1,6 +1,7 @@
 "use client";
 
 import { IntegrationIndex } from "@/lib/types";
+import CollapsibleSection from "./CollapsibleSection";
 
 interface IntegrationSummaryProps {
   integrations?: IntegrationIndex;
@@ -10,10 +11,7 @@ export default function IntegrationSummary({ integrations }: IntegrationSummaryP
   if (!integrations) return null;
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="px-6 py-4 bg-gray-50 border-b">
-        <h3 className="text-lg font-semibold">Integrations & External Connections</h3>
-      </div>
+    <CollapsibleSection title="Integrations & External Connections" defaultOpen={true}>
       <div className="p-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
@@ -75,7 +73,7 @@ export default function IntegrationSummary({ integrations }: IntegrationSummaryP
           </div>
         )}
       </div>
-    </div>
+    </CollapsibleSection>
   );
 }
 

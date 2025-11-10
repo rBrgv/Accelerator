@@ -161,8 +161,8 @@ export function generateDataReportMarkdown(scan: ScanOutput): string {
   md += `## Data Migration Considerations\n\n`;
   
   // Long Text Fields
-  const longTextFields = scan.inventory.sourceObjects.reduce((sum, obj) => 
-    sum + obj.fields.filter(f => (f.type === "textarea" || f.type === "richtextarea") && f.length && f.length > 255).length, 0
+  const longTextFields = scan.inventory.sourceObjects.reduce((sum: number, obj) => 
+    sum + obj.fields.filter(f => (f.type === "textarea" || f.type === "richtextarea") && f.length && f.length > 255).length
   , 0);
   md += `### Long Text & Rich Text Fields\n\n`;
   md += `| Metric | Count |\n`;

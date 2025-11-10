@@ -52,13 +52,24 @@ export default function ConnectCard() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
-      <h2 className="text-2xl font-bold mb-6">Connect to Salesforce</h2>
+    <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-xl p-8 border border-gray-100">
+      <div className="flex justify-center mb-6">
+        <img 
+          src="/logo-full.png" 
+          alt="Logo" 
+          className="h-16 object-contain"
+          onError={(e) => {
+            // Fallback if logo doesn't exist
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      </div>
+      <h2 className="text-2xl font-bold mb-6 text-center">Connect to Salesforce</h2>
 
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Authentication Method</label>
+          <label className="block text-sm font-medium text-gray-700 mb-3">Authentication Method</label>
         <div className="flex gap-4">
-          <label className="flex items-center">
+          <label className="flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50" style={{ borderColor: authMethod === "oauth" ? "#2563eb" : "#e5e7eb" }}>
             <input
               type="radio"
               value="oauth"
@@ -66,9 +77,9 @@ export default function ConnectCard() {
               onChange={(e) => setAuthMethod(e.target.value as "oauth")}
               className="mr-2"
             />
-            OAuth (Requires Connected App)
+            <span className="font-medium">OAuth (Requires Connected App)</span>
           </label>
-          <label className="flex items-center">
+          <label className="flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50" style={{ borderColor: authMethod === "password" ? "#2563eb" : "#e5e7eb" }}>
             <input
               type="radio"
               value="password"
@@ -76,7 +87,7 @@ export default function ConnectCard() {
               onChange={(e) => setAuthMethod(e.target.value as "password")}
               className="mr-2"
             />
-            Username/Password
+            <span className="font-medium">Username/Password</span>
           </label>
         </div>
       </div>
@@ -86,7 +97,7 @@ export default function ConnectCard() {
         <select
           value={environment}
           onChange={(e) => setEnvironment(e.target.value as "prod" | "sandbox" | "custom")}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
         >
           <option value="prod">Production</option>
           <option value="sandbox">Sandbox</option>
@@ -97,13 +108,13 @@ export default function ConnectCard() {
       {environment === "custom" && (
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">Custom Domain</label>
-          <input
-            type="text"
-            value={customDomain}
-            onChange={(e) => setCustomDomain(e.target.value)}
-            placeholder="yourdomain.my.salesforce.com"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          />
+            <input
+              type="text"
+              value={customDomain}
+              onChange={(e) => setCustomDomain(e.target.value)}
+              placeholder="yourdomain.my.salesforce.com"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            />
         </div>
       )}
 
@@ -115,7 +126,7 @@ export default function ConnectCard() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
           <div className="mb-4">
@@ -124,7 +135,7 @@ export default function ConnectCard() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
           <div className="mb-4">
@@ -133,7 +144,7 @@ export default function ConnectCard() {
               type="text"
               value={securityToken}
               onChange={(e) => setSecurityToken(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <p className="mt-1 text-xs text-gray-500">
               Get your security token from: Setup → My Personal Information → Reset My Security Token
@@ -145,7 +156,7 @@ export default function ConnectCard() {
       <button
         onClick={authMethod === "oauth" ? handleOAuthConnect : handlePasswordConnect}
         disabled={isConnecting || (authMethod === "password" && (!username || !password || !securityToken))}
-        className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-md hover:shadow-lg transition-all duration-200"
       >
         {isConnecting ? "Connecting..." : "Connect to Salesforce"}
       </button>
