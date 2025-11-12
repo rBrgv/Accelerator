@@ -301,96 +301,155 @@ async function getFlows(
   const logger = createLogger(requestId);
   
   try {
-    // Query FlowDefinition for metadata (simplified query)
-    const defQuery = `SELECT DeveloperName, LatestVersionId, MasterLabel, NamespacePrefix FROM FlowDefinition`;
-    console.log(`[getFlows] Executing FlowDefinition query...`);
-    let defResult;
+    // Try FlowDefinitionView first (has ProcessType and TriggerType) - with pagination
+    let allViewRecords: any[] = [];
+    let viewQuery = `SELECT DeveloperName, MasterLabel, NamespacePrefix, ActiveVersion.Status, ActiveVersion.ProcessType, ActiveVersion.TriggerType, ActiveVersion.TableEnumOrId, ActiveVersion.ApiVersion, LatestVersionId FROM FlowDefinitionView`;
+    console.log(`[getFlows] Executing FlowDefinitionView query...`);
+    let viewResult;
     try {
-      defResult = await soql(instanceUrl, accessToken, apiVersion, defQuery, requestId, { tooling: true });
-      console.log(`[getFlows] FlowDefinition query SUCCESS: ${defResult.records?.length || 0} records`);
+      let nextUrl: string | undefined;
+      let pageCount = 0;
+      
+      do {
+        if (nextUrl) {
+          // Fetch next page
+          const path = nextUrl.startsWith('/') ? nextUrl : `/services/data/${apiVersion}/tooling/query/${nextUrl}`;
+          viewResult = await sfGet(instanceUrl, accessToken, path, requestId);
+        } else {
+          // First page
+          viewResult = await soql(instanceUrl, accessToken, apiVersion, viewQuery, requestId, { tooling: true });
+        }
+        
+        allViewRecords.push(...(viewResult.records || []));
+        nextUrl = viewResult.nextRecordsUrl;
+        pageCount++;
+        
+        if (pageCount === 1) {
+          console.log(`[getFlows] FlowDefinitionView query SUCCESS: ${viewResult.records?.length || 0} records (first page)`);
+        }
+      } while (nextUrl && pageCount < 100); // Safety limit
+      
+      console.log(`[getFlows] FlowDefinitionView total: ${allViewRecords.length} records (${pageCount} pages)`);
+      viewResult = { records: allViewRecords };
     } catch (err: any) {
-      const errorMsg = `FlowDefinition query failed: ${err.message} (Status: ${err.response?.status || 'unknown'})`;
-      console.error(`[getFlows] ${errorMsg}`);
-      if (err.response?.data) {
-        console.error(`[getFlows] Error details:`, JSON.stringify(err.response.data, null, 2));
-      }
-      logger.error({ error: err.message, status: err.response?.status, query: defQuery }, "FlowDefinition query failed");
-      defResult = { records: [] };
+      console.log(`[getFlows] FlowDefinitionView query failed, trying FlowDefinition...`);
+      viewResult = { records: [] };
     }
     
-    logger.info({ defRecords: defResult.records?.length || 0 }, "FlowDefinition query result");
-    
-    // Query Flow for status (simplified - remove fields that may not be accessible)
-    const flowQuery = `SELECT Id, ApiVersion, Status, DeveloperName, ProcessType, TriggerType, TableEnumOrId, VersionNumber FROM Flow`;
-    console.log(`[getFlows] Executing Flow query...`);
-    let flowResult;
-    try {
-      flowResult = await soql(instanceUrl, accessToken, apiVersion, flowQuery, requestId, { tooling: true });
-      console.log(`[getFlows] Flow query SUCCESS: ${flowResult.records?.length || 0} records`);
-    } catch (err: any) {
-      const errorMsg = `Flow query failed: ${err.message} (Status: ${err.response?.status || 'unknown'})`;
-      console.error(`[getFlows] ${errorMsg}`);
-      if (err.response?.data) {
-        console.error(`[getFlows] Error details:`, JSON.stringify(err.response.data, null, 2));
+    // Fallback to FlowDefinition if FlowDefinitionView fails
+    let defResult = { records: [] };
+    if (!viewResult.records || viewResult.records.length === 0) {
+      const defQuery = `SELECT DeveloperName, LatestVersionId, MasterLabel, NamespacePrefix FROM FlowDefinition`;
+      console.log(`[getFlows] Executing FlowDefinition query...`);
+      try {
+        defResult = await soql(instanceUrl, accessToken, apiVersion, defQuery, requestId, { tooling: true });
+        console.log(`[getFlows] FlowDefinition query SUCCESS: ${defResult.records?.length || 0} records`);
+      } catch (err: any) {
+        const errorMsg = `FlowDefinition query failed: ${err.message} (Status: ${err.response?.status || 'unknown'})`;
+        console.error(`[getFlows] ${errorMsg}`);
+        logger.error({ error: err.message, status: err.response?.status, query: defQuery }, "FlowDefinition query failed");
+        defResult = { records: [] };
       }
-      logger.error({ error: err.message, status: err.response?.status, query: flowQuery }, "Flow query failed");
+    }
+    
+    // Query Flow for status and additional fields (if FlowDefinitionView didn't work)
+    let flowResult = { records: [] };
+    if (viewResult.records && viewResult.records.length > 0) {
+      // We have FlowDefinitionView data, no need for Flow query
       flowResult = { records: [] };
+    } else {
+      const flowQuery = `SELECT Id, ApiVersion, Status, ProcessType, TriggerType, TableEnumOrId, VersionNumber FROM Flow`;
+      console.log(`[getFlows] Executing Flow query...`);
+      try {
+        flowResult = await soql(instanceUrl, accessToken, apiVersion, flowQuery, requestId, { tooling: true });
+        console.log(`[getFlows] Flow query SUCCESS: ${flowResult.records?.length || 0} records`);
+      } catch (err: any) {
+        const errorMsg = `Flow query failed: ${err.message} (Status: ${err.response?.status || 'unknown'})`;
+        console.error(`[getFlows] ${errorMsg}`);
+        logger.error({ error: err.message, status: err.response?.status, query: flowQuery }, "Flow query failed");
+        flowResult = { records: [] };
+      }
     }
-    
-    logger.info({ flowRecords: flowResult.records?.length || 0 }, "Flow query result");
     
     // Build map of flows by DeveloperName
     const flowMap = new Map<string, Flow>();
     
-    // Process FlowDefinition records
-    for (const def of defResult.records || []) {
-      const developerName = def.DeveloperName || def.NamespacePrefix
-        ? `${def.NamespacePrefix}__${def.DeveloperName}`
-        : "";
-      
-      if (!developerName) continue;
-      
-      // Find matching Flow record (match by DeveloperName since DefinitionId may not be in query)
-      const flowRecord = (flowResult.records || []).find(
-        (f: any) => f.DeveloperName === def.DeveloperName || f.DeveloperName === (def.NamespacePrefix ? `${def.NamespacePrefix}__${def.DeveloperName}` : def.DeveloperName)
-      );
-      
-      const status = flowRecord?.Status === "Active" ? "Active" : 
-                     flowRecord?.Status === "Draft" ? "Draft" :
-                     flowRecord?.Status === "Obsolete" ? "Obsolete" :
-                     flowRecord?.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
-      
-      flowMap.set(developerName, {
-        id: flowRecord?.Id || def.LatestVersionId || "",
-        developerName,
-        masterLabel: def.MasterLabel || developerName,
-        status,
-        apiVersion: flowRecord?.ApiVersion || apiVersion,
-        processType: flowRecord?.ProcessType || undefined,
-        triggerType: flowRecord?.TriggerType || undefined,
-        object: flowRecord?.TableEnumOrId || undefined,
-      });
-    }
-    
-    // Add any flows not in definitions
-    for (const flowRecord of flowResult.records || []) {
-      const developerName = flowRecord.DeveloperName || "";
-      if (developerName && !flowMap.has(developerName)) {
-        const status = flowRecord.Status === "Active" ? "Active" :
-                       flowRecord.Status === "Draft" ? "Draft" :
-                       flowRecord.Status === "Obsolete" ? "Obsolete" :
-                       flowRecord.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
+    // Process FlowDefinitionView records (preferred method)
+    if (viewResult.records && viewResult.records.length > 0) {
+      for (const view of viewResult.records || []) {
+        const developerName = view.DeveloperName || (view.NamespacePrefix
+          ? `${view.NamespacePrefix}__${view.DeveloperName}`
+          : "");
+        
+        if (!developerName) continue;
+        
+        const activeVersion = view.ActiveVersion || {};
+        const status = activeVersion.Status === "Active" ? "Active" : 
+                       activeVersion.Status === "Draft" ? "Draft" :
+                       activeVersion.Status === "Obsolete" ? "Obsolete" :
+                       activeVersion.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
         
         flowMap.set(developerName, {
-          id: flowRecord.Id,
+          id: view.LatestVersionId || "",
           developerName,
-          masterLabel: developerName,
+          masterLabel: view.MasterLabel || developerName,
           status,
-          apiVersion: flowRecord.ApiVersion || apiVersion,
-          processType: flowRecord.ProcessType,
-          triggerType: flowRecord.TriggerType,
-          object: flowRecord.TableEnumOrId,
+          apiVersion: activeVersion.ApiVersion || apiVersion,
+          processType: activeVersion.ProcessType || undefined,
+          triggerType: activeVersion.TriggerType || undefined,
+          object: activeVersion.TableEnumOrId || undefined,
         });
+      }
+    } else {
+      // Fallback: Process FlowDefinition records and match with Flow records
+      for (const def of defResult.records || []) {
+        const developerName = def.DeveloperName || (def.NamespacePrefix
+          ? `${def.NamespacePrefix}__${def.DeveloperName}`
+          : "");
+        
+        if (!developerName) continue;
+        
+        // Find matching Flow record by matching on Id (LatestVersionId from def should match Flow.Id)
+        const flowRecord = (flowResult.records || []).find(
+          (f: any) => f.Id === def.LatestVersionId
+        );
+        
+        const status = flowRecord?.Status === "Active" ? "Active" : 
+                       flowRecord?.Status === "Draft" ? "Draft" :
+                       flowRecord?.Status === "Obsolete" ? "Obsolete" :
+                       flowRecord?.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
+        
+        flowMap.set(developerName, {
+          id: flowRecord?.Id || def.LatestVersionId || "",
+          developerName,
+          masterLabel: def.MasterLabel || developerName,
+          status,
+          apiVersion: flowRecord?.ApiVersion || apiVersion,
+          processType: flowRecord?.ProcessType || undefined,
+          triggerType: flowRecord?.TriggerType || undefined,
+          object: flowRecord?.TableEnumOrId || undefined,
+        });
+      }
+      
+      // Add any flows not in definitions
+      for (const flowRecord of flowResult.records || []) {
+        if (!flowMap.has(flowRecord.Id)) {
+          const status = flowRecord.Status === "Active" ? "Active" :
+                         flowRecord.Status === "Draft" ? "Draft" :
+                         flowRecord.Status === "Obsolete" ? "Obsolete" :
+                         flowRecord.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
+          
+          flowMap.set(flowRecord.Id, {
+            id: flowRecord.Id,
+            developerName: flowRecord.Id,
+            masterLabel: flowRecord.Id,
+            status,
+            apiVersion: flowRecord.ApiVersion || apiVersion,
+            processType: flowRecord.ProcessType,
+            triggerType: flowRecord.TriggerType,
+            object: flowRecord.TableEnumOrId,
+          });
+        }
       }
     }
     

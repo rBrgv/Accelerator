@@ -11,6 +11,7 @@ import { buildGraph } from "./graph/dependencies";
 import { scanFindings } from "./scanners/findings";
 import { migrationPrerequisites } from "./inventory/prerequisites";
 import { createLogger } from "./logger";
+import { computeHealth } from "./analyzers/healthCheck";
 
 export async function runScan(
   accessToken: string,
@@ -114,7 +115,7 @@ export async function runScan(
     const dependencyGraph = buildGraph(sourceObjects);
     
     // Scan for findings
-    const findings = scanFindings(sourceObjects, automation, code, requestId);
+    const findings = scanFindings(sourceObjects, automation, code, reporting, requestId);
     
     // Calculate summary - handle both array and AutomationCount types
     const validationRulesCount = Array.isArray(automation.validationRules) 
@@ -149,7 +150,7 @@ export async function runScan(
     // Log summary
     logger.info({ summary }, "Scan completed successfully");
     
-    return {
+    const scanOutput: ScanOutput = {
       source,
       inventory: {
         sourceObjects,
@@ -165,6 +166,25 @@ export async function runScan(
       dependencyGraph,
       summary,
     };
+    
+    // Compute health check (localhost only - non-blocking)
+    const isLocalhost = !process.env.VERCEL;
+    if (isLocalhost) {
+      try {
+        const health = await computeHealth(scanOutput, {
+          instanceUrl,
+          token: accessToken,
+          apiVersion,
+        });
+        scanOutput.health = health;
+        logger.info({ overallScore: health.overallScore }, "Health check computed");
+      } catch (error: any) {
+        // Silently fail - health check is optional
+        logger.warn({ error: error.message }, "Health check computation failed, continuing without it");
+      }
+    }
+    
+    return scanOutput;
   } catch (error: any) {
     logger.error({ error, stack: error.stack }, "Scan failed");
     throw error;

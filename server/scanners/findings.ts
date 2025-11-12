@@ -1,10 +1,11 @@
-import { Finding, ObjectStat, AutomationIndex, CodeIndex } from "@/lib/types";
+import { Finding, ObjectStat, AutomationIndex, CodeIndex, ReportingIndex } from "@/lib/types";
 import { createLogger } from "../logger";
 
 export function scanFindings(
   objects: ObjectStat[],
   automation: AutomationIndex,
   code?: CodeIndex,
+  reporting?: ReportingIndex,
   requestId?: string
 ): Finding[] {
   const logger = createLogger(requestId);
@@ -378,6 +379,27 @@ export function scanFindings(
     }
   } catch (err: any) {
     logger.debug({ error: err?.message }, "Error processing coverage findings - skipping");
+  }
+  
+  // Scan for report subscriptions migration issue
+  if (reporting && reporting.reports && reporting.reports.length > 0) {
+    findings.push({
+      id: "REPORT_SUBSCRIPTIONS_MIGRATION",
+      severity: "MEDIUM",
+      category: "Reporting & Analytics",
+      title: "Report subscriptions cannot be migrated",
+      description: `This org contains ${reporting.reports.length} report(s). Report subscriptions (scheduled report deliveries) cannot be migrated to the target org and must be manually recreated.`,
+      objects: [],
+      impact: "Report subscriptions are user-specific and org-specific configurations that do not transfer during migration. Users will need to manually recreate their report subscriptions in the target org after migration.",
+      remediation: [
+        "Document all existing report subscriptions (report name, recipient, schedule, format)",
+        "Export report subscription details before migration",
+        "Create a migration checklist for users to recreate subscriptions",
+        "Communicate to users that they will need to set up report subscriptions after migration",
+        "Consider using Salesforce Data Export or reporting tools to identify all subscriptions",
+        "Plan for a post-migration task to assist users in recreating critical subscriptions",
+      ],
+    });
   }
   
   logger.info({ findingsCount: findings.length }, "Findings scan completed");

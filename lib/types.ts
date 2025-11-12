@@ -216,6 +216,38 @@ export interface IntegrationIndex {
   authProviders: Array<{ id: string; fullName: string; providerType?: string }>;
 }
 
+export type HealthKpi = {
+  key: string;
+  label: string;
+  value?: number | string | null;
+  status: "HEALTHY" | "MONITOR" | "RISK" | "NA";
+  detail?: string;
+  weight?: number;
+};
+
+export type HealthCategory = {
+  key: "governance" | "automation" | "data" | "security" | "limits";
+  label: string;
+  score: number | null;
+  kpis: HealthKpi[];
+};
+
+export type HealthComputation = {
+  overallScore: number | null;
+  categories: HealthCategory[];
+  methodology: {
+    weights: {
+      governance: number;
+      automation: number;
+      data: number;
+      security: number;
+      limits: number;
+    };
+    statusToPoints: { HEALTHY: number; MONITOR: number; RISK: number; NA: number };
+    notes: string[];
+  };
+};
+
 export interface ScanOutput {
   source: OrgProfile;
   inventory: {
@@ -234,6 +266,7 @@ export interface ScanOutput {
   scanId?: string;
   scanDuration?: number;
   scanDurationSeconds?: number;
+  health?: HealthComputation;
 }
 
 export interface ScanRun {

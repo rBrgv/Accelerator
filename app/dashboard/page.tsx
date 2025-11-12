@@ -16,6 +16,7 @@ import CollapsibleSection from "@/components/CollapsibleSection";
 import DataQuality from "@/components/DataQuality";
 import ReportGenerator from "@/components/ReportGenerator";
 import CodeCoveragePanel from "@/components/CodeCoveragePanel";
+import HealthCheckPanel from "@/components/HealthCheckPanel";
 import { migrationPrerequisites } from "@/server/inventory/prerequisites";
 
 type ConnectionStatus = "checking" | "connected" | "disconnected";
@@ -157,12 +158,24 @@ export default function DashboardPage() {
       }
 
       // Check if scan returned meaningful data
-      if (data && data.inventory && data.inventory.sourceObjects) {
-        const objectsWithData = data.inventory.sourceObjects.filter(
-          (obj: any) => obj.recordCount !== undefined || (obj.fields && obj.fields.length > 0)
-        );
+      if (data && data.inventory) {
+        // Check if org info is missing (indicates auth issue)
+        if (!data.source?.orgId || data.source?.edition === "Unknown") {
+          setError({
+            message: "Unable to retrieve organization information. Your access token may have expired. Please disconnect and reconnect to Salesforce.",
+          });
+          return;
+        }
+        
+        // Check if we have any data at all
+        const hasAnyData = 
+          (data.inventory.sourceObjects && data.inventory.sourceObjects.length > 0) ||
+          (data.inventory.automation && (data.inventory.automation.flows?.length > 0 || data.inventory.automation.triggers?.length > 0)) ||
+          (data.inventory.code && (data.inventory.code.apexClasses?.length > 0 || data.inventory.code.apexTriggers?.length > 0)) ||
+          (data.inventory.reporting && data.inventory.reporting.reports?.length > 0) ||
+          (data.summary && data.summary.objects > 0);
 
-        if (objectsWithData.length === 0 && data.summary && data.summary.objects === 0) {
+        if (!hasAnyData) {
           setError({
             message: "Scan completed but no data was retrieved. Your access token may have expired. Please disconnect and reconnect to Salesforce to refresh your session.",
           });
@@ -348,6 +361,12 @@ export default function DashboardPage() {
                 }
               />
             </div>
+
+            {scanData.health && (
+              <div className="mb-6">
+                <HealthCheckPanel health={scanData.health} scanId={scanData.scanId} scanData={scanData} />
+              </div>
+            )}
 
             <div className="mb-6">
               <AutomationSummary automation={scanData.inventory.automation} />
