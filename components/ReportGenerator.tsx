@@ -20,29 +20,35 @@ export default function ReportGenerator({ scanId, scanData }: ReportGeneratorPro
     try {
       let response: Response;
       
-      // If scanData prop is available, always use POST (most reliable)
-      if (scanData) {
-        response = await fetch(`/api/reports/executive`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(scanData),
-        });
-      } else if (scanId) {
-        // Fallback: try GET with scanId
+      // Prioritize GET with scanId to avoid payload size limits
+      if (scanId) {
         response = await fetch(`/api/reports/executive?scanId=${scanId}`);
         
-        // If GET fails with 404 and we have scanData, try POST
-        if (!response.ok && response.status === 404) {
-          if (scanData) {
-            // Retry with POST using scanData
+        // If GET fails with 404 and we have scanData, try POST as fallback
+        if (!response.ok && response.status === 404 && scanData) {
+          // Only use POST if scanData is small (estimate < 4MB)
+          const dataSize = JSON.stringify(scanData).length;
+          if (dataSize < 4 * 1024 * 1024) { // 4MB limit
             response = await fetch(`/api/reports/executive`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(scanData),
             });
+          } else {
+            throw new Error("Scan data too large. Please ensure scan is saved and use scanId instead.");
           }
-          // If still no scanData, the error will be caught below
         }
+      } else if (scanData) {
+        // Fallback: use POST only if scanId not available and data is small
+        const dataSize = JSON.stringify(scanData).length;
+        if (dataSize >= 4 * 1024 * 1024) { // 4MB limit
+          throw new Error("Scan data too large. Please run a new scan to get a scanId.");
+        }
+        response = await fetch(`/api/reports/executive`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(scanData),
+        });
       } else {
         setError("No scan data available. Please run a scan first.");
         setIsGeneratingExecutive(false);
@@ -247,24 +253,35 @@ export default function ReportGenerator({ scanId, scanData }: ReportGeneratorPro
                 try {
                   let response: Response;
                   
-                  if (scanData) {
-                    response = await fetch(`/api/reports/technical?format=html`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(scanData),
-                    });
-                  } else if (scanId) {
+                  // Prioritize GET with scanId to avoid payload size limits
+                  if (scanId) {
                     response = await fetch(`/api/reports/technical?scanId=${scanId}&format=html`);
                     
-                    if (!response.ok && response.status === 404) {
-                      if (scanData) {
+                    // If GET fails with 404 and we have scanData, try POST as fallback
+                    if (!response.ok && response.status === 404 && scanData) {
+                      // Only use POST if scanData is small (estimate < 4MB)
+                      const dataSize = JSON.stringify(scanData).length;
+                      if (dataSize < 4 * 1024 * 1024) { // 4MB limit
                         response = await fetch(`/api/reports/technical?format=html`, {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify(scanData),
                         });
+                      } else {
+                        throw new Error("Scan data too large. Please ensure scan is saved and use scanId instead.");
                       }
                     }
+                  } else if (scanData) {
+                    // Fallback: use POST only if scanId not available and data is small
+                    const dataSize = JSON.stringify(scanData).length;
+                    if (dataSize >= 4 * 1024 * 1024) { // 4MB limit
+                      throw new Error("Scan data too large. Please run a new scan to get a scanId.");
+                    }
+                    response = await fetch(`/api/reports/technical?format=html`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(scanData),
+                    });
                   } else {
                     setError("No scan data available. Please run a scan first.");
                     setIsGeneratingTechnical(false);

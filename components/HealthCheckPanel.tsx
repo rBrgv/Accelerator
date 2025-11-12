@@ -115,16 +115,41 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
         <div className="mt-6 border-t pt-4">
           <button
             onClick={async () => {
-              if (!scanData) {
-                console.error("No scan data available");
-                return;
-              }
               try {
-                const response = await fetch(`/api/reports/health`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(scanData),
-                });
+                let response: Response;
+                
+                // Prioritize GET with scanId to avoid payload size limits
+                if (scanId) {
+                  response = await fetch(`/api/reports/health?scanId=${scanId}`);
+                  
+                  // If GET fails with 404 and we have scanData, try POST as fallback
+                  if (!response.ok && response.status === 404 && scanData) {
+                    // Only use POST if scanData is small (estimate < 4MB)
+                    const dataSize = JSON.stringify(scanData).length;
+                    if (dataSize < 4 * 1024 * 1024) { // 4MB limit
+                      response = await fetch(`/api/reports/health`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(scanData),
+                      });
+                    } else {
+                      throw new Error("Scan data too large. Please ensure scan is saved and use scanId instead.");
+                    }
+                  }
+                } else if (scanData) {
+                  // Fallback: use POST only if scanId not available and data is small
+                  const dataSize = JSON.stringify(scanData).length;
+                  if (dataSize >= 4 * 1024 * 1024) { // 4MB limit
+                    throw new Error("Scan data too large. Please run a new scan to get a scanId.");
+                  }
+                  response = await fetch(`/api/reports/health`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(scanData),
+                  });
+                } else {
+                  throw new Error("No scan data available. Please run a scan first.");
+                }
                 
                 if (!response.ok) {
                   const contentType = response.headers.get("content-type");
