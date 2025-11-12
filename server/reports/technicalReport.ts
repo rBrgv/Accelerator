@@ -624,7 +624,7 @@ export function generateTechnicalReportHTML(scan: ScanOutput, org?: OrgInfo): st
         <p style="margin: 5px 0;"><strong>Organization:</strong> ${escapeHtml(safe(org?.name))}</p>
         <p style="margin: 5px 0;"><strong>Edition:</strong> ${escapeHtml(safe(org?.edition))}</p>
         <p style="margin: 5px 0;"><strong>Instance:</strong> ${escapeHtml(safe(org?.instanceUrl || org?.myDomain))}</p>
-        ${summary?.orgId || src?.orgId ? `<p style="margin: 5px 0;"><strong>Org Id:</strong> ${escapeHtml(safe(summary.orgId || src.orgId))}</p>` : ""}
+        ${src?.orgId ? `<p style="margin: 5px 0;"><strong>Org Id:</strong> ${escapeHtml(safe(src.orgId))}</p>` : ""}
       </div>
 
       <h2 style="color: #2563eb; margin-top: 40px; margin-bottom: 20px; font-size: 24px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">
