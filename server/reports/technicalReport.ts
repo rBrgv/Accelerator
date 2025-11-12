@@ -60,6 +60,7 @@ function getRemediationForFinding(finding: any): string {
       if (code.includes("COVERAGE")) {
         return "Prioritize test development for classes with low coverage; review each class to understand why coverage is low; develop targeted test classes for critical business logic; ensure all critical business logic is tested; add factories and branch-path tests; enforce ≥75% coverage in CI with quality gates.";
       }
+      // Fall through to default if not coverage-related
       break;
     case "SINGLE":
       return "Refactor to a single trigger per object; adopt a trigger framework (before/after handlers), add ordered execution and unit tests.";
@@ -112,6 +113,8 @@ function getRemediationForFinding(finding: any): string {
       }
       return "Review finding details and apply appropriate remediation based on object-specific requirements.";
   }
+  // This should never be reached, but TypeScript requires it
+  return "Review finding details and apply appropriate remediation based on object-specific requirements.";
 }
 
 export function generateTechnicalReportMarkdown(scan: ScanOutput, org?: OrgInfo): string {
