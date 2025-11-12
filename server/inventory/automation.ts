@@ -402,7 +402,7 @@ async function getFlows(
       }
     } else {
       // Fallback: Process FlowDefinition records and match with Flow records
-      for (const def of defResult.records || []) {
+      for (const def of (defResult.records || []) as Array<{ DeveloperName?: string; NamespacePrefix?: string; LatestVersionId?: string; MasterLabel?: string }>) {
         const developerName = def.DeveloperName || (def.NamespacePrefix
           ? `${def.NamespacePrefix}__${def.DeveloperName}`
           : "");
@@ -410,8 +410,8 @@ async function getFlows(
         if (!developerName) continue;
         
         // Find matching Flow record by matching on Id (LatestVersionId from def should match Flow.Id)
-        const flowRecord = (flowResult.records || []).find(
-          (f: any) => f.Id === def.LatestVersionId
+        const flowRecord = ((flowResult.records || []) as Array<{ Id?: string; Status?: string; ApiVersion?: string; ProcessType?: string; TriggerType?: string; TableEnumOrId?: string }>).find(
+          (f) => f.Id === def.LatestVersionId
         );
         
         const status = flowRecord?.Status === "Active" ? "Active" : 
