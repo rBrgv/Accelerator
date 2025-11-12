@@ -432,8 +432,8 @@ async function getFlows(
       }
       
       // Add any flows not in definitions
-      for (const flowRecord of flowResult.records || []) {
-        if (!flowMap.has(flowRecord.Id)) {
+      for (const flowRecord of (flowResult.records || []) as Array<{ Id?: string; Status?: string; ApiVersion?: string; ProcessType?: string; TriggerType?: string; TableEnumOrId?: string; VersionNumber?: number }>) {
+        if (!flowRecord.Id || !flowMap.has(flowRecord.Id)) {
           const status = flowRecord.Status === "Active" ? "Active" :
                          flowRecord.Status === "Draft" ? "Draft" :
                          flowRecord.Status === "Obsolete" ? "Obsolete" :
