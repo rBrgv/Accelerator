@@ -137,8 +137,8 @@ export function generateTechnicalReportMarkdown(scan: ScanOutput, org?: OrgInfo)
   lines.push(`**Organization:** ${safe(org?.name)}`);
   lines.push(`**Edition:** ${safe(org?.edition)}`);
   lines.push(`**Instance:** ${safe(org?.instanceUrl || org?.myDomain)}`);
-  if (summary?.orgId || src?.orgId) {
-    lines.push(`**Org Id:** ${safe(summary.orgId || src.orgId)}`);
+  if (src?.orgId) {
+    lines.push(`**Org Id:** ${safe(src.orgId)}`);
   }
   lines.push(``);
 
