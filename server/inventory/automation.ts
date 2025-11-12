@@ -433,23 +433,24 @@ async function getFlows(
       
       // Add any flows not in definitions
       for (const flowRecord of (flowResult.records || []) as Array<{ Id?: string; Status?: string; ApiVersion?: string; ProcessType?: string; TriggerType?: string; TableEnumOrId?: string; VersionNumber?: number }>) {
-        if (!flowRecord.Id || !flowMap.has(flowRecord.Id)) {
-          const status = flowRecord.Status === "Active" ? "Active" :
-                         flowRecord.Status === "Draft" ? "Draft" :
-                         flowRecord.Status === "Obsolete" ? "Obsolete" :
-                         flowRecord.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
-          
-          flowMap.set(flowRecord.Id, {
-            id: flowRecord.Id,
-            developerName: flowRecord.Id,
-            masterLabel: flowRecord.Id,
-            status,
-            apiVersion: flowRecord.ApiVersion || apiVersion,
-            processType: flowRecord.ProcessType,
-            triggerType: flowRecord.TriggerType,
-            object: flowRecord.TableEnumOrId,
-          });
-        }
+        if (!flowRecord.Id) continue; // Skip records without Id
+        if (flowMap.has(flowRecord.Id)) continue; // Skip if already in map
+        
+        const status = flowRecord.Status === "Active" ? "Active" :
+                       flowRecord.Status === "Draft" ? "Draft" :
+                       flowRecord.Status === "Obsolete" ? "Obsolete" :
+                       flowRecord.Status === "InvalidDraft" ? "InvalidDraft" : "Inactive";
+        
+        flowMap.set(flowRecord.Id, {
+          id: flowRecord.Id,
+          developerName: flowRecord.Id,
+          masterLabel: flowRecord.Id,
+          status,
+          apiVersion: flowRecord.ApiVersion || apiVersion,
+          processType: flowRecord.ProcessType,
+          triggerType: flowRecord.TriggerType,
+          object: flowRecord.TableEnumOrId,
+        });
       }
     }
     
