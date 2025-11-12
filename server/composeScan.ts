@@ -167,21 +167,18 @@ export async function runScan(
       summary,
     };
     
-    // Compute health check (localhost only - non-blocking)
-    const isLocalhost = !process.env.VERCEL;
-    if (isLocalhost) {
-      try {
-        const health = await computeHealth(scanOutput, {
-          instanceUrl,
-          token: accessToken,
-          apiVersion,
-        });
-        scanOutput.health = health;
-        logger.info({ overallScore: health.overallScore }, "Health check computed");
-      } catch (error: any) {
-        // Silently fail - health check is optional
-        logger.warn({ error: error.message }, "Health check computation failed, continuing without it");
-      }
+    // Compute health check (non-blocking, optional)
+    try {
+      const health = await computeHealth(scanOutput, {
+        instanceUrl,
+        token: accessToken,
+        apiVersion,
+      });
+      scanOutput.health = health;
+      logger.info({ overallScore: health.overallScore }, "Health check computed");
+    } catch (error: any) {
+      // Silently fail - health check is optional
+      logger.warn({ error: error.message }, "Health check computation failed, continuing without it");
     }
     
     return scanOutput;
