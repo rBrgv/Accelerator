@@ -28,7 +28,7 @@ export default function CollapsibleSection({ title, children, defaultOpen = true
         </svg>
       </button>
       {isOpen && (
-        <div className="p-6 animate-in slide-in-from-top-2 duration-200">
+        <div className="p-6 transition-all duration-200 ease-in-out">
           {children}
         </div>
       )}

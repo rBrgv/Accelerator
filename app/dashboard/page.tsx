@@ -17,6 +17,7 @@ import DataQuality from "@/components/DataQuality";
 import ReportGenerator from "@/components/ReportGenerator";
 import CodeCoveragePanel from "@/components/CodeCoveragePanel";
 import HealthCheckPanel from "@/components/HealthCheckPanel";
+import AiAdvisor from "@/components/AiAdvisor";
 import { migrationPrerequisites } from "@/server/inventory/prerequisites";
 
 type ConnectionStatus = "checking" | "connected" | "disconnected";
@@ -369,6 +370,10 @@ export default function DashboardPage() {
             )}
 
             <div className="mb-6">
+              <AiAdvisor scanData={scanData} />
+            </div>
+
+            <div className="mb-6">
               <AutomationSummary automation={scanData.inventory.automation} />
             </div>
 
@@ -405,11 +410,16 @@ export default function DashboardPage() {
             )}
 
             <div className="mb-6">
-              <CollapsibleSection title="Migration Prerequisites" defaultOpen={false}>
+              <CollapsibleSection title="Migration Prerequisites — Manual Checklist" defaultOpen={false}>
                 <div className="bg-white rounded-lg shadow-md p-6">
-                  <p className="text-sm text-gray-600 mb-4">
-                    Pre-deployment checklist items to configure before starting metadata deployment.
-                  </p>
+                  <div className="flex items-start gap-2 mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <svg className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm text-blue-800">
+                      <strong>Manual checklist</strong> — these items must be verified and completed by your team before deployment begins. Statuses are not automatically detected.
+                    </p>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">

@@ -5,22 +5,29 @@ export interface SessionData {
   accessToken?: string;
   instanceUrl?: string;
   apiVersion?: string;
+  oauthState?: string;
 }
 
-const sessionOptions = {
-  password: process.env.SESSION_SECRET || "change-me-to-a-random-string-min-32-chars-long",
-  cookieName: "sf-org-analyzer-session",
-  cookieOptions: {
-    secure: process.env.NODE_ENV === "production",
-    httpOnly: true,
-    sameSite: "lax" as const,
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  },
-};
+function getSessionOptions() {
+  const secret = process.env.SESSION_SECRET || process.env.SESSION_PASSWORD;
+  if (!secret) {
+    throw new Error("SESSION_SECRET environment variable is required (min 32 characters)");
+  }
+  return {
+    password: secret,
+    cookieName: "sf-org-analyzer-session",
+    cookieOptions: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      sameSite: "lax" as const,
+      maxAge: 60 * 60 * 8, // 8 hours — align with typical Salesforce token lifetime
+    },
+  };
+}
 
 export async function getSession() {
   const cookieStore = await cookies();
-  return getIronSession<SessionData>(cookieStore, sessionOptions);
+  return getIronSession<SessionData>(cookieStore, getSessionOptions());
 }
 
 export async function requireSession(): Promise<SessionData> {
@@ -30,4 +37,3 @@ export async function requireSession(): Promise<SessionData> {
   }
   return session;
 }
-

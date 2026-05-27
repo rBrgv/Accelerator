@@ -1,27 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { HealthComputation } from "@/lib/types";
+import { HealthComputation, ScanOutput } from "@/lib/types";
 import CollapsibleSection from "./CollapsibleSection";
 
 interface HealthCheckPanelProps {
   health?: HealthComputation;
   scanId?: string;
-  scanData?: any;
+  scanData?: ScanOutput;
 }
 
 export default function HealthCheckPanel({ health, scanId, scanData }: HealthCheckPanelProps) {
   const [methodologyOpen, setMethodologyOpen] = useState(false);
-
-  // Debug logging
-  if (typeof window !== "undefined" && !health) {
-    console.log("[HealthCheckPanel] No health data provided");
-  } else if (typeof window !== "undefined" && health) {
-    console.log("[HealthCheckPanel] Health data received:", {
-      overallScore: health.overallScore,
-      categoriesCount: health.categories?.length,
-    });
-  }
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   if (!health) return null;
 
@@ -35,14 +27,10 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "HEALTHY":
-        return "text-green-600 bg-green-50 border-green-200";
-      case "MONITOR":
-        return "text-yellow-600 bg-yellow-50 border-yellow-200";
-      case "RISK":
-        return "text-red-600 bg-red-50 border-red-200";
-      default:
-        return "text-gray-600 bg-gray-50 border-gray-200";
+      case "HEALTHY": return "text-green-600 bg-green-50 border-green-200";
+      case "MONITOR": return "text-yellow-600 bg-yellow-50 border-yellow-200";
+      case "RISK":    return "text-red-600 bg-red-50 border-red-200";
+      default:        return "text-gray-600 bg-gray-50 border-gray-200";
     }
   };
 
@@ -51,6 +39,61 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
     if (score >= 80) return "text-green-600";
     if (score >= 60) return "text-yellow-600";
     return "text-red-600";
+  };
+
+  const handleDownload = async () => {
+    if (!scanData && !scanId) {
+      setDownloadError("No scan data available. Please run a scan first.");
+      return;
+    }
+    setIsDownloading(true);
+    setDownloadError(null);
+    try {
+      let response: Response;
+      if (scanData) {
+        response = await fetch("/api/reports/health", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(scanData),
+        });
+      } else {
+        response = await fetch(`/api/reports/health?scanId=${scanId}`);
+      }
+
+      if (!response.ok) {
+        let message = `Server error: ${response.status}`;
+        try {
+          const ct = response.headers.get("content-type") ?? "";
+          if (ct.includes("application/json")) {
+            const json = await response.json();
+            message = json.error || message;
+          } else {
+            const text = await response.text();
+            if (text) message = text;
+          }
+        } catch { /* use default message */ }
+        throw new Error(message);
+      }
+
+      const cd = response.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename\*=UTF-8''(.+)/);
+      const today = new Date().toISOString().split("T")[0];
+      const filename = match ? decodeURIComponent(match[1]) : `health-audit-${today}.html`;
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setDownloadError(err.message || "Failed to download health audit report.");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -67,10 +110,7 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
         {/* Category Scores Grid */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {health.categories?.map((c) => (
-            <div
-              key={c.key}
-              className="rounded-xl border p-3 bg-white hover:shadow-md transition-shadow"
-            >
+            <div key={c.key} className="rounded-xl border p-3 bg-white hover:shadow-md transition-shadow">
               <div className="text-sm text-gray-600 mb-1">{c.label}</div>
               <div className={`text-xl font-semibold ${getScoreColor(c.score)}`}>
                 {c.score != null ? `${c.score}%` : "n/a"}
@@ -97,9 +137,7 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
                           Current: {typeof k.value === "number" ? k.value.toLocaleString() : k.value}
                         </div>
                       )}
-                      {k.detail && (
-                        <div className="text-xs mt-1 opacity-75">{k.detail}</div>
-                      )}
+                      {k.detail && <div className="text-xs mt-1 opacity-75">{k.detail}</div>}
                     </div>
                     <span className="ml-3 text-xs font-medium uppercase">
                       {k.status === "RISK" ? "High Risk" : "Monitor"}
@@ -113,89 +151,35 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
 
         {/* Download Report */}
         <div className="mt-6 border-t pt-4">
+          {downloadError && (
+            <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-800">
+              <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{downloadError}</span>
+            </div>
+          )}
           <button
-            onClick={async () => {
-              try {
-                let response: Response;
-                
-                // Prioritize GET with scanId to avoid payload size limits
-                if (scanId) {
-                  response = await fetch(`/api/reports/health?scanId=${scanId}`);
-                  
-                  // If GET fails with 404 and we have scanData, try POST as fallback
-                  if (!response.ok && response.status === 404 && scanData) {
-                    // Only use POST if scanData is small (estimate < 4MB)
-                    const dataSize = JSON.stringify(scanData).length;
-                    if (dataSize < 4 * 1024 * 1024) { // 4MB limit
-                      response = await fetch(`/api/reports/health`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(scanData),
-                      });
-                    } else {
-                      throw new Error("Scan data too large. Please ensure scan is saved and use scanId instead.");
-                    }
-                  }
-                } else if (scanData) {
-                  // Fallback: use POST only if scanId not available and data is small
-                  const dataSize = JSON.stringify(scanData).length;
-                  if (dataSize >= 4 * 1024 * 1024) { // 4MB limit
-                    throw new Error("Scan data too large. Please run a new scan to get a scanId.");
-                  }
-                  response = await fetch(`/api/reports/health`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(scanData),
-                  });
-                } else {
-                  throw new Error("No scan data available. Please run a scan first.");
-                }
-                
-                if (!response.ok) {
-                  const contentType = response.headers.get("content-type");
-                  let errorMessage = "Failed to generate report";
-                  try {
-                    if (contentType && contentType.includes("application/json")) {
-                      const data = await response.json();
-                      errorMessage = data.error || `Server error: ${response.status}`;
-                    } else {
-                      const text = await response.text();
-                      errorMessage = text || `Server error: ${response.status}`;
-                    }
-                  } catch (parseError) {
-                    errorMessage = `Server error: ${response.status}`;
-                  }
-                  throw new Error(errorMessage);
-                }
-
-                // Get filename from Content-Disposition header
-                const contentDisposition = response.headers.get("Content-Disposition");
-                let filename = `health-audit-${new Date().toISOString().split("T")[0]}.html`;
-                if (contentDisposition) {
-                  const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/);
-                  if (filenameMatch) {
-                    filename = decodeURIComponent(filenameMatch[1]);
-                  }
-                }
-
-                // Download the file
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-              } catch (err: any) {
-                console.error("Failed to download health report", err);
-                alert(err.message || "Failed to download health audit report");
-              }
-            }}
-            className="text-sm border border-blue-300 rounded-lg px-3 py-1.5 inline-block text-blue-700 hover:bg-blue-50 transition-colors"
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="inline-flex items-center gap-2 text-sm border border-blue-300 rounded-lg px-3 py-1.5 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Download Health Audit Report
+            {isDownloading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Generating…
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download Health Audit Report
+              </>
+            )}
           </button>
         </div>
 
@@ -212,25 +196,20 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
           {methodologyOpen && (
             <div className="mt-3 text-sm space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
               <div>
-                <strong>Category Weights:</strong> Governance {health.methodology.weights.governance}%, Automation{" "}
-                {health.methodology.weights.automation}%, Data {health.methodology.weights.data}%, Security{" "}
-                {health.methodology.weights.security}%, Limits {health.methodology.weights.limits}%.
+                <strong>Category Weights:</strong> Governance {health.methodology.weights.governance}%,
+                Automation {health.methodology.weights.automation}%, Data {health.methodology.weights.data}%,
+                Security {health.methodology.weights.security}%, Limits {health.methodology.weights.limits}%.
               </div>
               <div>
-                <strong>Status Points:</strong> Healthy={health.methodology.statusToPoints.HEALTHY}, Monitor=
-                {health.methodology.statusToPoints.MONITOR}, Risk={health.methodology.statusToPoints.RISK}, N/A=
-                {health.methodology.statusToPoints.NA}.
+                <strong>Status Points:</strong> Healthy={health.methodology.statusToPoints.HEALTHY},
+                Monitor={health.methodology.statusToPoints.MONITOR}, Risk={health.methodology.statusToPoints.RISK},
+                N/A={health.methodology.statusToPoints.NA}.
               </div>
               <div>
                 Category score = (sum of status points / maximum possible points) × 100. Overall score is the
@@ -239,9 +218,7 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
               {Array.isArray(health.methodology.notes) && health.methodology.notes.length > 0 && (
                 <ul className="list-disc pl-5 space-y-1 mt-2">
                   {health.methodology.notes.map((n: string, i: number) => (
-                    <li key={i} className="text-gray-700">
-                      {n}
-                    </li>
+                    <li key={i} className="text-gray-700">{n}</li>
                   ))}
                 </ul>
               )}
@@ -252,4 +229,3 @@ export default function HealthCheckPanel({ health, scanId, scanData }: HealthChe
     </CollapsibleSection>
   );
 }
-

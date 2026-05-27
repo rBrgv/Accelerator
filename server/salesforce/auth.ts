@@ -66,7 +66,7 @@ export async function authenticateWithSoapLogin(
   <soapenv:Body>
     <urn:login>
       <urn:username>${escapeXml(username)}</urn:username>
-      <urn:password>${escapeXml(password + securityToken)}</urn:password>
+      <urn:password>${escapeXml(password.trim() + (securityToken?.trim() || ""))}</urn:password>
     </urn:login>
   </soapenv:Body>
 </soapenv:Envelope>`;
@@ -92,11 +92,20 @@ export async function authenticateWithSoapLogin(
     };
   } catch (error: any) {
     if (error.response?.data) {
+      console.error("[SOAP] Raw error response:", error.response.data);
       const fault = error.response.data.match(/<faultstring>(.*?)<\/faultstring>/)?.[1];
       if (fault) {
+        if (fault.includes("INVALID_LOGIN")) {
+          throw new Error(
+            "Invalid username, password, or security token. " +
+            "Make sure you selected the correct environment (Production vs Sandbox) " +
+            "and that your security token is current — it resets every time you change your password."
+          );
+        }
         throw new Error(fault);
       }
     }
+    console.error("[SOAP] Network/request error:", error.message, error.code);
     throw error;
   }
 }

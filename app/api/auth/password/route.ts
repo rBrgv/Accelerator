@@ -10,17 +10,19 @@ export async function POST(request: NextRequest) {
   try {
     const { username, password, securityToken, environment, customDomain } = await request.json();
 
-    if (!username || !password || !securityToken) {
-      return NextResponse.json({ error: "Username, password, and security token are required" }, { status: 400 });
+    if (!username || !password) {
+      return NextResponse.json({ error: "Username and password are required" }, { status: 400 });
     }
 
     let loginUrl = "https://login.salesforce.com/services/Soap/u/60.0";
     if (environment === "sandbox") {
       loginUrl = "https://test.salesforce.com/services/Soap/u/60.0";
     } else if (environment === "custom" && customDomain) {
-      loginUrl = `https://${customDomain}/services/Soap/u/60.0`;
+      const domain = customDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+      loginUrl = `https://${domain}/services/Soap/u/60.0`;
     }
 
+    logger.info({ loginUrl, username }, "Attempting SOAP login");
     const tokens = await authenticateWithSoapLogin(username, password, securityToken, loginUrl);
 
     const session = await getSession();

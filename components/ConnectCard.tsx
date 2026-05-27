@@ -5,13 +5,15 @@ import { useState } from "react";
 export default function ConnectCard() {
   const [environment, setEnvironment] = useState<"prod" | "sandbox" | "custom">("prod");
   const [customDomain, setCustomDomain] = useState("");
-  const [authMethod, setAuthMethod] = useState<"oauth" | "password">("oauth");
+  const [authMethod, setAuthMethod] = useState<"oauth" | "password">("password");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [securityToken, setSecurityToken] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const handleOAuthConnect = () => {
+    setConnectError(null);
     setIsConnecting(true);
     const params = new URLSearchParams();
     if (environment !== "prod") {
@@ -24,6 +26,7 @@ export default function ConnectCard() {
   };
 
   const handlePasswordConnect = async () => {
+    setConnectError(null);
     setIsConnecting(true);
     try {
       const response = await fetch("/api/auth/password", {
@@ -32,7 +35,7 @@ export default function ConnectCard() {
         body: JSON.stringify({
           username,
           password,
-          securityToken,
+          securityToken: securityToken || undefined,
           environment,
           customDomain: environment === "custom" ? customDomain : undefined,
         }),
@@ -42,11 +45,11 @@ export default function ConnectCard() {
         window.location.href = "/dashboard?success=true";
       } else {
         const data = await response.json();
-        alert(data.error || "Authentication failed");
+        setConnectError(data.error || "Authentication failed. Check your credentials and try again.");
         setIsConnecting(false);
       }
-    } catch (error) {
-      alert("Failed to connect. Please try again.");
+    } catch {
+      setConnectError("Unable to reach the server. Please check your connection and try again.");
       setIsConnecting(false);
     }
   };
@@ -54,40 +57,45 @@ export default function ConnectCard() {
   return (
     <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-xl p-8 border border-gray-100">
       <div className="flex justify-center mb-6">
-        <img 
-          src="/logo-full.png" 
-          alt="Logo" 
+        <img
+          src="/logo-full.png"
+          alt="Logo"
           className="h-16 object-contain"
           onError={(e) => {
-            // Fallback if logo doesn't exist
-            (e.target as HTMLImageElement).style.display = 'none';
+            (e.target as HTMLImageElement).style.display = "none";
           }}
         />
       </div>
       <h2 className="text-2xl font-bold mb-6 text-center">Connect to Salesforce</h2>
 
       <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-3">Authentication Method</label>
+        <label className="block text-sm font-medium text-gray-700 mb-3">Authentication Method</label>
         <div className="flex gap-4">
-          <label className="flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50" style={{ borderColor: authMethod === "oauth" ? "#2563eb" : "#e5e7eb" }}>
+          <label
+            className="flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50"
+            style={{ borderColor: authMethod === "oauth" ? "#2563eb" : "#e5e7eb" }}
+          >
             <input
               type="radio"
               value="oauth"
               checked={authMethod === "oauth"}
-              onChange={(e) => setAuthMethod(e.target.value as "oauth")}
+              onChange={() => { setAuthMethod("oauth"); setConnectError(null); }}
               className="mr-2"
             />
             <span className="font-medium">OAuth (Requires Connected App)</span>
           </label>
-          <label className="flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50" style={{ borderColor: authMethod === "password" ? "#2563eb" : "#e5e7eb" }}>
+          <label
+            className="flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50"
+            style={{ borderColor: authMethod === "password" ? "#2563eb" : "#e5e7eb" }}
+          >
             <input
               type="radio"
               value="password"
               checked={authMethod === "password"}
-              onChange={(e) => setAuthMethod(e.target.value as "password")}
+              onChange={() => { setAuthMethod("password"); setConnectError(null); }}
               className="mr-2"
             />
-            <span className="font-medium">Username/Password</span>
+            <span className="font-medium">Username / Password</span>
           </label>
         </div>
       </div>
@@ -108,13 +116,13 @@ export default function ConnectCard() {
       {environment === "custom" && (
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">Custom Domain</label>
-            <input
-              type="text"
-              value={customDomain}
-              onChange={(e) => setCustomDomain(e.target.value)}
-              placeholder="yourdomain.my.salesforce.com"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            />
+          <input
+            type="text"
+            value={customDomain}
+            onChange={(e) => setCustomDomain(e.target.value)}
+            placeholder="yourdomain.my.salesforce.com (no https://)"
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          />
         </div>
       )}
 
@@ -126,6 +134,7 @@ export default function ConnectCard() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
@@ -135,11 +144,14 @@ export default function ConnectCard() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Security Token</label>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Security Token <span className="text-gray-400 font-normal">(optional if IP is whitelisted)</span>
+            </label>
             <input
               type="text"
               value={securityToken}
@@ -147,15 +159,24 @@ export default function ConnectCard() {
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Get your security token from: Setup → My Personal Information → Reset My Security Token
+              Setup → My Personal Information → Reset My Security Token
             </p>
           </div>
         </>
       )}
 
+      {connectError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-800">
+          <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{connectError}</span>
+        </div>
+      )}
+
       <button
         onClick={authMethod === "oauth" ? handleOAuthConnect : handlePasswordConnect}
-        disabled={isConnecting || (authMethod === "password" && (!username || !password || !securityToken))}
+        disabled={isConnecting || (authMethod === "password" && (!username || !password))}
         className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-md hover:shadow-lg transition-all duration-200"
       >
         {isConnecting ? "Connecting..." : "Connect to Salesforce"}
@@ -163,10 +184,9 @@ export default function ConnectCard() {
 
       {authMethod === "password" && (
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-          <strong>Security Note:</strong> Username/password authentication uses SOAP login. For production use, prefer OAuth with a Connected App.
+          <strong>Security Note:</strong> For production deployments, prefer OAuth with a Connected App.
         </div>
       )}
     </div>
   );
 }
-
