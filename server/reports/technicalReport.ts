@@ -250,12 +250,23 @@ export function generateTechnicalReportMarkdown(scan: ScanOutput, org?: OrgInfo)
   lines.push(`## 4. Automation Deep Dive`);
   lines.push(`- Flows (total/active): ${safe(flowSummary?.total)}/${safe(flowSummary?.active)} (source: ${safe(flowSummary?.method)})`);
   if (Array.isArray(automation?.flows) && automation.flows.length > 0) {
+    const allLackType = automation.flows.every((f: any) => !(f?.processType || f?.ProcessType));
     lines.push(`### 4.1 Flows (sample)`);
-    lines.push(`| DeveloperName | Status | ProcessType | Object |`);
-    lines.push(`|---------------|--------|-------------|--------|`);
-    automation.flows.slice(0, 30).forEach((f: any) => {
-      lines.push(`| ${safe(f?.developerName || f?.DeveloperName)} | ${safe(f?.status || f?.Status)} | ${safe(f?.processType || f?.ProcessType)} | ${safe(f?.object || f?.Object)} |`);
-    });
+    if (allLackType) {
+      lines.push(`> Flow type and object details are not available via the ${safe(flowSummary?.method)} API. Use Salesforce Setup → Flows for full details.`);
+      lines.push(``);
+      lines.push(`| Flow Name | Status |`);
+      lines.push(`|-----------|--------|`);
+      automation.flows.slice(0, 30).forEach((f: any) => {
+        lines.push(`| ${safe(f?.masterLabel || f?.developerName || f?.DeveloperName)} | ${safe(f?.status || f?.Status)} |`);
+      });
+    } else {
+      lines.push(`| DeveloperName | Status | ProcessType | Object |`);
+      lines.push(`|---------------|--------|-------------|--------|`);
+      automation.flows.slice(0, 30).forEach((f: any) => {
+        lines.push(`| ${safe(f?.developerName || f?.DeveloperName)} | ${safe(f?.status || f?.Status)} | ${safe(f?.processType || f?.ProcessType, "—")} | ${safe(f?.object || f?.Object, "—")} |`);
+      });
+    }
     if (automation.flows.length > 30) {
       lines.push(`_... ${automation.flows.length - 30} more_`);
     }

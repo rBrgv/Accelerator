@@ -15,7 +15,7 @@ export default function SecuritySummary({ security }: SecuritySummaryProps) {
 
   // Group profiles by license
   const profilesByLicense = security.profiles.reduce((acc, profile) => {
-    const license = profile.userLicense || "Unknown";
+    const license = profile.userLicense || "Standard";
     if (!acc[license]) acc[license] = [];
     acc[license].push(profile);
     return acc;
@@ -23,7 +23,7 @@ export default function SecuritySummary({ security }: SecuritySummaryProps) {
 
   // Group permission sets by license
   const permSetsByLicense = security.permissionSets.reduce((acc, ps) => {
-    const license = ps.userLicense || "Unknown";
+    const license = ps.userLicense || "No License Restriction";
     if (!acc[license]) acc[license] = [];
     acc[license].push(ps);
     return acc;

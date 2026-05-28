@@ -12,8 +12,9 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
   const [activeTab, setActiveTab] = useState<"overview" | "flows" | "triggers" | "validation">("overview");
 
   // Flow analysis
+  const allFlowsLackType = automation.flows.length > 0 && automation.flows.every(f => !f.processType);
   const flowsByProcessType = automation.flows.reduce((acc, flow) => {
-    const type = flow.processType || "Not Specified";
+    const type = flow.processType || (allFlowsLackType ? "All Flows" : "Other");
     if (!acc[type]) acc[type] = [];
     acc[type].push(flow);
     return acc;
@@ -231,12 +232,19 @@ export default function AutomationSummary({ automation }: AutomationSummaryProps
 
           {activeTab === "flows" && (
             <div className="space-y-4">
+              {allFlowsLackType && (
+                <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                  Flow type and object details are unavailable — this org uses the FlowDefinition API which does not expose process type. Use Salesforce Setup → Flows to see full details.
+                </div>
+              )}
               {Object.entries(flowsByProcessType).map(([type, flows]) => (
                 <div key={type} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-gray-900">{type}</h4>
-                    <span className="text-sm text-gray-600">{flows.length} flows</span>
-                  </div>
+                  {!allFlowsLackType && (
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-gray-900">{type}</h4>
+                      <span className="text-sm text-gray-600">{flows.length} flow{flows.length !== 1 ? "s" : ""}</span>
+                    </div>
+                  )}
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {flows.map(flow => (
                       <div key={flow.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">

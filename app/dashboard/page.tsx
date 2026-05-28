@@ -17,7 +17,6 @@ import DataQuality from "@/components/DataQuality";
 import ReportGenerator from "@/components/ReportGenerator";
 import CodeCoveragePanel from "@/components/CodeCoveragePanel";
 import HealthCheckPanel from "@/components/HealthCheckPanel";
-import AiAdvisor from "@/components/AiAdvisor";
 import { migrationPrerequisites } from "@/server/inventory/prerequisites";
 
 type ConnectionStatus = "checking" | "connected" | "disconnected";
@@ -368,10 +367,6 @@ export default function DashboardPage() {
                 <HealthCheckPanel health={scanData.health} scanId={scanData.scanId} scanData={scanData} />
               </div>
             )}
-
-            <div className="mb-6">
-              <AiAdvisor scanData={scanData} />
-            </div>
 
             <div className="mb-6">
               <AutomationSummary automation={scanData.inventory.automation} />
